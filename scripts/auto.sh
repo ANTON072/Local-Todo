@@ -177,6 +177,15 @@ pr_mergeable() {
 	echo "$state"
 }
 
+# スクリプトが自分で needs-human にするとき、理由を Issue か PR にコメントする。
+# 形はスキルのコメント（implement-issue・address-review-comment）にそろえ、1行目で手書きのコメントと見分ける。
+# 使い方: comment_stop <issue|pr> <番号> <止まった理由> <決めてほしいこと>
+comment_stop() {
+	local kind="$1" target="$2" reason="$3" decide="$4"
+	printf '自動実行で止まりました（make auto）\n\n## 止まった理由\n\n%s\n\n## 決めてほしいこと\n\n%s\n' "$reason" "$decide" |
+		gh "$kind" comment "$target" --body-file - >/dev/null
+}
+
 # --- 1件ずつ処理する -------------------------------------------------------
 
 stuck="$(gh issue list --state open --label in-progress --json number --jq '.[].number' | tr '\n' ' ')"
@@ -236,7 +245,10 @@ while true; do
 				| .number' || true)"
 	fi
 	if [[ -z "$pr_number" ]]; then
-		gh issue edit "$number" --remove-label in-progress >/dev/null
+		comment_stop issue "$number" \
+			"implement-issue は完了と報告したが、この Issue を閉じる開いた PR が見つからなかった（報告された PR: ${pr_url:-なし}）。PR の本文に Closes #${number} がないか、PR が出ていない。" \
+			"PR を出し直すか本文に Closes #${number} を足したうえで、make auto で続けるか手で進めるかを決めてください。"
+		gh issue edit "$number" --remove-label in-progress --add-label needs-human >/dev/null
 		add_result "#${number}: 完了と報告されたが、この Issue を閉じる PR が見つからない（${pr_url:-URL なし}）"
 		continue
 	fi
@@ -269,6 +281,9 @@ while true; do
 		continue
 	fi
 	if has_outside_findings "$pr_number"; then
+		comment_stop pr "$pr_number" \
+			"code-reviewer のレビュー本文に「差分の外の指摘」がある。差分の外の指摘はスレッドにならないので、address-review-comment では対応できない。" \
+			"レビュー本文の「差分の外の指摘」を読み、直すかどうかを決めてください。"
 		gh pr edit "$pr_number" --add-label needs-human >/dev/null
 		gh issue edit "$number" --remove-label in-progress >/dev/null
 		add_result "#${number}: needs-human（レビュー本文に差分の外の指摘がある: ${pr_url}）"
@@ -294,6 +309,9 @@ while true; do
 			merged="yes"
 			;;
 		CONFLICTING)
+			comment_stop pr "$pr_number" \
+				"レビューの指摘にはすべて対応したが、main とコンフリクトしているのでマージしなかった。make auto は rebase しない。" \
+				"main を取り込んでコンフリクトを解消し、マージしてください。"
 			gh pr edit "$pr_number" --add-label needs-human >/dev/null
 			reason="コンフリクトしている（needs-human）"
 			;;
