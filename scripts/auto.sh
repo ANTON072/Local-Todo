@@ -289,6 +289,18 @@ while true; do
 		add_result "#${number}: needs-human（レビュー本文に差分の外の指摘がある: ${pr_url}）"
 		continue
 	fi
+	# コンフリクトしていれば、人がマージするだけの PR ではないので、ready-to-merge は付けない。
+	# auto-merge でない PR も同じ。
+	mergeable="$(pr_mergeable "$pr_number")"
+	if [[ "$mergeable" == "CONFLICTING" ]]; then
+		comment_stop pr "$pr_number" \
+			"レビューの指摘にはすべて対応したが、main とコンフリクトしている。make auto は rebase しない。" \
+			"main を取り込んでコンフリクトを解消し、マージしてください。"
+		gh pr edit "$pr_number" --add-label needs-human >/dev/null
+		gh issue edit "$number" --remove-label in-progress >/dev/null
+		add_result "#${number}: needs-human（コンフリクトしている: ${pr_url}）"
+		continue
+	fi
 	gh pr edit "$pr_number" --add-label ready-to-merge >/dev/null
 
 	# auto-merge の Issue だけ、自動でマージする。
@@ -298,27 +310,15 @@ while true; do
 		reason="auto-merge が付いていない"
 	elif gh pr view "$pr_number" --json body --jq '.body' | grep -qF '画面の確認はしていない'; then
 		reason="画面の確認をしていない"
+	elif [[ "$mergeable" != "MERGEABLE" ]]; then
+		reason="マージできるか GitHub が判定できなかった"
 	else
-		case "$(pr_mergeable "$pr_number")" in
-		MERGEABLE)
-			head="$(gh pr view "$pr_number" --json headRefName --jq '.headRefName')"
-			gh pr merge "$pr_number" --squash >/dev/null
-			git switch -q main
-			git pull -q --ff-only
-			git branch -D "$head" >/dev/null 2>&1 || true
-			merged="yes"
-			;;
-		CONFLICTING)
-			comment_stop pr "$pr_number" \
-				"レビューの指摘にはすべて対応したが、main とコンフリクトしているのでマージしなかった。make auto は rebase しない。" \
-				"main を取り込んでコンフリクトを解消し、マージしてください。"
-			gh pr edit "$pr_number" --add-label needs-human >/dev/null
-			reason="コンフリクトしている（needs-human）"
-			;;
-		*)
-			reason="マージできるか GitHub が判定できなかった"
-			;;
-		esac
+		head="$(gh pr view "$pr_number" --json headRefName --jq '.headRefName')"
+		gh pr merge "$pr_number" --squash >/dev/null
+		git switch -q main
+		git pull -q --ff-only
+		git branch -D "$head" >/dev/null 2>&1 || true
+		merged="yes"
 	fi
 
 	gh issue edit "$number" --remove-label in-progress >/dev/null
