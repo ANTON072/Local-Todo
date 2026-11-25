@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# 修正をプッシュしたあとに、Copilot のレビューコメント1件へ修正コミットのリンクを返信し、
+# 修正をプッシュしたあとに、レビューコメント1件へ修正コミットのリンクを返信し、
 # そのスレッドを resolve する。
-# 使い方: scripts/resolve.sh <コメントID>
+# 使い方: scripts/resolve.sh <コメントの URL か ID>
 set -euo pipefail
 
-comment_id="${1:?使い方: make resolve COMMENT=<コメントID>}"
-if [[ ! "$comment_id" =~ ^[0-9]+$ ]]; then
-	echo "コメントIDは数字で指定してください: ${comment_id}" >&2
+comment_ref="${1:?使い方: make resolve COMMENT=<コメントの URL か ID>}"
+# コメントの URL（…#discussion_r<数字> か …#r<数字>）と、数字の ID のどちらも受け付ける。
+if [[ "$comment_ref" =~ \#(discussion_)?r([0-9]+)$ ]]; then
+	comment_id="${BASH_REMATCH[2]}"
+elif [[ "$comment_ref" =~ ^[0-9]+$ ]]; then
+	comment_id="$comment_ref"
+else
+	echo "コメントの URL か、数字の ID を指定してください: ${comment_ref}" >&2
 	exit 1
 fi
 
