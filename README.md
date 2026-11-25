@@ -43,6 +43,11 @@ macOS 14 以上の Mac が必要。
 | `make lint` | Swift のファイルが規則に合っているか調べる |
 | `make test` | `LocalTodo.xcodeproj` を生成し直してから単体テストを実行する |
 | `make generate` | `project.yml` から `LocalTodo.xcodeproj` を生成する |
+| `make review PR=<URL>` | PR 全体を手元の Claude Code にレビューさせ、指摘を PR の行に投稿する |
+| `make re-review COMMENT=<URL>` | レビューコメント1件に対するコミット前の修正を、手元の Claude Code に再レビューさせる |
+| `make resolve COMMENT=<URL>` | push したあと、レビューコメント1件に修正コミットのリンクを返信して resolve する |
+
+`review` と `re-review` には [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
 
 ## データの場所とバックアップ
 

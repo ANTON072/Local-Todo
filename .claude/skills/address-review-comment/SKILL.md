@@ -1,6 +1,6 @@
 ---
 name: address-review-comment
-description: PR のレビューコメント1件に対応する。修正し、make re-review で Copilot が「解決」と言うまで直し、make check、コミット、push、make resolve までを通して行う。「このコメントを対応して <URL>」「このレビューコメントに対応して」のように、PR のレビューコメントの URL（#discussion_r<数字>）を渡されたときに使う。
+description: PR のレビューコメント1件に対応する。修正し、make re-review で code-reviewer が「解決」と言うまで直し、make check、コミット、push、make resolve までを通して行う。「このコメントを対応して <URL>」「このレビューコメントに対応して」のように、PR のレビューコメントの URL（#discussion_r<数字>）を渡されたときに使う。
 ---
 
 # レビューコメントへの対応
@@ -29,19 +29,19 @@ PR のレビューコメント1件を、修正から resolve まで通して片�
 - 新しく作ったファイルは `git add -N <ファイル>` を実行しておく。make re-review は `git diff HEAD` を見るので、追加していないファイルは差分に入らない。
 - まだコミットしない。
 
-## 3. Copilot に再レビューさせる
+## 3. code-reviewer に再レビューさせる
 
 ```bash
-make re-review COMMENT=<コメントID>
+make re-review COMMENT=<コメントの URL>
 ```
 
-結果の1行目が「解決」か「未解決」になる。
+レビュアー（`.claude/agents/code-reviewer.md`）は、このセッションとは別の新しいセッションで動く。結果の1行目が「解決」か「未解決」になる。
 
 - 解決：4 に進む。
 - 未解決：理由を読む。
   - 理由が正しい：2 に戻って直し、もう一度 make re-review を実行する。
   - 理由が指摘の範囲を超えている、または 1 でユーザーと決めた方針（直さない部分）を未解決と言っている：ループを止め、結果をユーザーに見せて判断を仰ぐ。
-- 2 → 3 を3回くり返しても解決にならないときは、止めてユーザーに報告する。そのときは、何を直したかと、Copilot の最後の指摘を伝える。
+- 2 → 3 を3回くり返しても解決にならないときは、止めてユーザーに報告する。そのときは、何を直したかと、code-reviewer の最後の指摘を伝える。
 
 ## 4. make check
 
@@ -66,7 +66,7 @@ git push
 ## 7. resolve
 
 ```bash
-make resolve COMMENT=<コメントID>
+make resolve COMMENT=<コメントの URL>
 ```
 
 コメントに修正コミットへのリンクを返信し、スレッドを resolve する。手元の最新コミットが PR の最新コミットと違うと失敗するので、push を済ませてから実行する。

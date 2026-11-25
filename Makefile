@@ -1,4 +1,4 @@
-.PHONY: format lint test check generate re-review resolve
+.PHONY: format lint test check generate review re-review resolve
 
 SWIFT_DIRS := LocalTodo LocalTodoTests
 
@@ -25,10 +25,16 @@ check:
 generate:
 	xcodegen generate
 
-# Copilot のレビューコメント1件に対するコミット前の修正を、ローカルの Copilot CLI で再レビューする。
+# PR 全体を手元の Claude Code（code-reviewer）にレビューさせ、指摘を PR の行につけて投稿する。
+# PR には URL か番号を渡す。
+review:
+	@scripts/review.sh "$(PR)"
+
+# レビューコメント1件に対するコミット前の修正を、手元の Claude Code（code-reviewer）で再レビューする。
+# COMMENT にはコメントの URL か ID を渡す。
 re-review:
 	@scripts/re-review.sh "$(COMMENT)"
 
-# 修正をプッシュしたあと、Copilot のレビューコメント1件に返信して resolve する。
+# 修正をプッシュしたあと、レビューコメント1件に返信して resolve する。
 resolve:
 	@scripts/resolve.sh "$(COMMENT)"

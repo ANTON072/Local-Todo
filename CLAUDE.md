@@ -27,6 +27,13 @@ Swift のファイルを編集したら、PR を出す前に `make check` を実
 
 フォーマットの規則は `.swift-format` に書く。
 
+## コードレビュー
+
+PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md`）が、コードを書いたセッションとは別のセッションで行う（理由は docs/adr/0003-code-review-with-claude-code.md）。
+
+- PR を出したら、`make review PR=<PR の URL>` の実行をユーザーに案内する。自分では実行しない。
+- レビューコメントへの対応は、1件ずつ address-review-comment スキルで行う。修正の確認は `make re-review COMMENT=<コメントの URL>`、push したあとの返信と resolve は `make resolve COMMENT=<コメントの URL>` で行う。
+
 ## 用語
 
 - CONTEXT.mdの用語を使う。Avoid に挙がった言葉（書類、配布物など）は使わない。
