@@ -31,10 +31,12 @@ final class Persistence {
 
     private let directory: URL
     private let saveDelay: TimeInterval
-    private let onSaveError: (Error) -> Void
     private let queue = DispatchQueue(label: "LocalTodo.Persistence")
     private let logger = Logger(subsystem: "LocalTodo", category: "Persistence")
 
+    /// 保存に失敗したときに、メインスレッドで呼ばれる。メインスレッドからだけ触る。
+    /// あとから差し替えられるのは、作った Persistence を受け取る側（TodoStore）が失敗を受け取るため。
+    var onSaveError: (Error) -> Void
     /// メインスレッドからだけ触る。
     private var pendingSave: DispatchWorkItem?
     /// キューの中からだけ触る。
@@ -144,8 +146,9 @@ final class Persistence {
             try Self.encode(todos).write(to: fileURL, options: .atomic)
         } catch {
             logger.error("保存できない: \(error.localizedDescription, privacy: .public)")
-            DispatchQueue.main.async { [onSaveError] in
-                onSaveError(error)
+            // onSaveError はメインスレッドで読む（キューの中から読まない）
+            DispatchQueue.main.async { [weak self] in
+                self?.onSaveError(error)
             }
         }
     }
