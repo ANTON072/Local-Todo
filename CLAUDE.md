@@ -49,6 +49,8 @@ PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md
 
 `make auto` は、`ready` の Issue を1件ずつ、実装 → PR → `make review` → レビュー対応まで進め、`auto-merge` の Issue はマージまで進める（理由は docs/adr/0005-auto-run.md）。`make auto LIMIT=<数>` で、手をつける Issue の数の上限を決める。
 
+組織の設定で `make` や `git push` に確認が要るので、完全に人の手は離さない。`make auto` は手順ごとに対話の `claude` を開く。人はその場で確認に答え、スキルが「終わりました」と言ったら `/exit` で閉じる。スキルは設計の判断をその場で聞かず、決められなければ `needs-human` で止まる。
+
 ラベルの意味：
 
 - `ready`（Issue）：詰め終わった。実装してよい。grill-issues が付ける

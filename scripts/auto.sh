@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# ready の Issue を、人の手を介さずに、実装 → PR → レビュー → レビュー対応 → マージまで進める。
+# ready の Issue を1件ずつ、実装 → PR → レビュー → レビュー対応 → マージまで進める。
 # 判断の理由は docs/adr/0005-auto-run.md。
+# 組織の設定で make や git push には確認が要るので、スキルは対話の claude で開く。人はその場で確認に答え、
+# スキルが「終わりました」と言ったら /exit で閉じる。閉じると、このスクリプトが次へ進む。
 # 使い方: scripts/auto.sh（LIMIT=<数> で、手をつける Issue の数の上限を決める）
 #
 # macOS の /bin/bash（3.2）で動くように書く。連想配列や mapfile は使わない。
@@ -91,28 +93,22 @@ next_issue() {
 	return 0
 }
 
-# --- claude -p -------------------------------------------------------------
+# --- claude ----------------------------------------------------------------
 
-schema='{
-  "type": "object",
-  "properties": {
-    "status": {"type": "string", "enum": ["完了", "needs-human", "中断"]},
-    "pr_url": {"type": "string"},
-    "summary": {"type": "string"}
-  },
-  "required": ["status", "summary"]
-}'
+# スキルは、自動実行のとき、最後に {status, pr_url, summary} を LOCAL_TODO_RESULT のファイルに書く。
+# status は 完了・needs-human・中断 のどれか。
 
 # 自動実行のときだけ効く許可。対話のセッションには効かせないので、.claude/settings.json には入れない。
+# ここにないコマンドと、組織の設定で確認が要るコマンド（make・git push・git pull など）は、その場で人に確認が出る。
 # gh は、スキルが使う形だけにする。gh pr merge と gh api は許可しない。gh api を許すと、REST でのマージや
 # GraphQL でのスレッドの resolve ができ、マージとレビューの関門（このスクリプトが握る）を通り抜けられるため。
 # レビューコメントの読み書きは make comment・make reply・make unresolved、resolve は make resolve に限る。
 # make は、スキルが使うものだけにする。make review と make auto は、書いたセッションには呼ばせない。
-# 変数を展開するコマンド（echo "$X" など）は、許可に挙げても dontAsk では拒否される。スキルが自動実行かどうかを
-# 見分けるのに使う printenv LOCAL_TODO_AUTO は、展開を含まないので許可できる。
+# 変数を展開するコマンド（echo "$X" など）は、許可に挙げても確認が出る。スキルが使う
+# printenv LOCAL_TODO_AUTO・printenv LOCAL_TODO_RESULT は、展開を含まないので許可できる。
 allowed_tools=(
 	"Read" "Edit" "Write" "Glob" "Grep" "Agent" "Skill"
-	"Bash(printenv LOCAL_TODO_AUTO)"
+	"Bash(printenv LOCAL_TODO_AUTO)" "Bash(printenv LOCAL_TODO_RESULT)"
 	"Bash(echo:*)" "Bash(cat:*)" "Bash(ls:*)" "Bash(cp:*)" "Bash(diff:*)"
 	"Bash(git:*)"
 	"Bash(gh issue view:*)" "Bash(gh issue comment:*)" "Bash(gh issue edit:*)"
@@ -127,32 +123,28 @@ allowed_tools=(
 # main への直接の push は、GitHub のルールセット（protect-main の pull_request）でも拒否される。
 disallowed_tools=("Bash(gh pr merge:*)" "Bash(gh api:*)" "Bash(git push origin main:*)" "Bash(git push origin HEAD:main:*)")
 
-# スキルを自動実行で呼び、結果の JSON（status・pr_url・summary）を標準出力に出す。
-# 受け取れなかったときは 1 を返す。
+# スキルを対話の claude で自動実行として開き、閉じたあとで結果を RESULT_FILE に読み込む。
+# 結果のファイルがない（途中で閉じたなど）ときは 1 を返す。
+# claude は画面を使うので、$(…) の中では呼ばない。
 run_skill() {
-	local number="$1" step="$2" prompt="$3" log result
-	log="${log_dir}/$(date +%Y%m%d-%H%M%S)-${number}-${step}.json"
-	echo "Issue #${number}: ${step} を動かしています…（ログ: ${log}）" >&2
-	# --allowedTools は複数の値を取るので、プロンプトは標準入力から渡す。
+	local number="$1" step="$2" prompt="$3"
+	RESULT_FILE="${PWD}/${log_dir}/$(date +%Y%m%d-%H%M%S)-${number}-${step}.json"
+	echo
+	echo "== Issue #${number}: ${step} を開きます。確認が出たら答え、「終わりました」と出たら /exit で閉じてください。" >&2
+	# プロンプトは先頭に置く。--allowedTools などは値をいくつも取るので、うしろに置くとツールとして読まれる。
 	# --setting-sources project：手元の .claude/settings.local.json やユーザーの設定の許可
 	# （gh pr * や gh api * など）が、上の一覧に足されないようにする。
-	if ! LOCAL_TODO_AUTO=1 claude -p --no-session-persistence --setting-sources project \
-		--output-format json --json-schema "$schema" \
-		--permission-mode dontAsk \
+	if ! LOCAL_TODO_AUTO=1 LOCAL_TODO_RESULT="$RESULT_FILE" claude "$prompt" \
+		--setting-sources project \
 		--allowedTools "${allowed_tools[@]}" \
-		--disallowedTools "${disallowed_tools[@]}" \
-		<<<"$prompt" >"$log"; then
-		echo "Issue #${number}: ${step} の claude -p が失敗しました。" >&2
+		--disallowedTools "${disallowed_tools[@]}"; then
+		echo "Issue #${number}: ${step} の claude が失敗しました。" >&2
 		return 1
 	fi
-	# 拒否された操作があれば、足りない許可に気づけるよう知らせる。
-	jq -r '.permission_denials[]? | "注意: 拒否されました: \(.tool_input.command // .tool_name)"' "$log" >&2
-	result="$(jq -c '.structured_output // empty' "$log")"
-	if [[ -z "$result" ]]; then
-		echo "Issue #${number}: ${step} の結果を受け取れませんでした。" >&2
+	if ! jq -e '.status | IN("完了", "needs-human", "中断")' "$RESULT_FILE" >/dev/null 2>&1; then
+		echo "Issue #${number}: ${step} の結果（${RESULT_FILE}）を受け取れませんでした。" >&2
 		return 1
 	fi
-	echo "$result"
 }
 
 # --- PR の状態 -------------------------------------------------------------
@@ -232,7 +224,9 @@ while true; do
 	gh issue edit "$number" --remove-label ready --add-label in-progress >/dev/null
 
 	# 実装して PR を出す。
-	if ! result="$(run_skill "$number" implement "implement-issue スキルで、Issue #${number} を実装してください。")"; then
+	if run_skill "$number" implement "implement-issue スキルで、Issue #${number} を実装してください。"; then
+		result="$(jq -c . "$RESULT_FILE")"
+	else
 		add_result "#${number}: implement-issue の結果を受け取れずに止まりました（in-progress のまま）"
 		finish 1
 	fi
@@ -282,7 +276,9 @@ while true; do
 
 	# レビューコメントに対応する。
 	if [[ "$(unresolved_threads "$pr_number")" -gt 0 ]]; then
-		if ! result="$(run_skill "$number" address "address-review-comment スキルで、${pr_url} の未解決のレビューコメントに対応してください。")"; then
+		if run_skill "$number" address "address-review-comment スキルで、${pr_url} の未解決のレビューコメントに対応してください。"; then
+			result="$(jq -c . "$RESULT_FILE")"
+		else
 			add_result "#${number}: address-review-comment の結果を受け取れずに止まりました（${pr_url}、in-progress のまま）"
 			finish 1
 		fi

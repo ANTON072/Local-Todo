@@ -51,7 +51,8 @@ reply:
 unresolved:
 	@scripts/comment.sh unresolved "$(PR)"
 
-# ready の Issue を、人の手を介さずに、実装 → PR → レビュー → レビュー対応 → マージまで進める。
+# ready の Issue を1件ずつ、実装 → PR → レビュー → レビュー対応 → マージまで進める。
+# 手順ごとに対話の claude が開くので、確認に答え、終わったら /exit で閉じる。
 # LIMIT には、手をつける Issue の数の上限を渡す（省略すると、取れるだけ処理する）。
 auto:
 	@LIMIT="$(LIMIT)" scripts/auto.sh
