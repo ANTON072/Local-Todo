@@ -226,8 +226,14 @@ while true; do
 	pr_url="$(jq -r '.pr_url // ""' <<<"$result")"
 	pr_number=""
 	if [[ -n "$pr_url" ]]; then
-		pr_number="$(gh pr view "$pr_url" --json number,state,closingIssuesReferences \
-			--jq "select(.state == \"OPEN\" and ([.closingIssuesReferences[].number] | index(${number}))) | .number" 2>/dev/null || true)"
+		# GitHub は closingIssuesReferences を PR の本文から作る。本文の書き方がずれても見落とさないよう、
+		# 本文の「Closes #<番号>」も見る。
+		pr_number="$(gh pr view "$pr_url" --json number,state,body,closingIssuesReferences 2>/dev/null |
+			jq -r --argjson issue "$number" '
+				select(.state == "OPEN")
+				| select(([.closingIssuesReferences[].number] | index($issue))
+					or (.body | test("(?i)\\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #\($issue)\\b")))
+				| .number' || true)"
 	fi
 	if [[ -z "$pr_number" ]]; then
 		gh issue edit "$number" --remove-label in-progress >/dev/null

@@ -117,6 +117,7 @@ make check
 
 - 変えたファイルだけを `git add` してコミットする。メッセージは日本語で、1行目に何をしたか、本文になぜそうしたかを書き、`Closes #<番号>` を入れる。末尾の署名は、セッションの指示に従う。
 - `git push -u origin <ブランチ>` のあと、`gh pr create` で PR を出す。本文には次を書く。
+  - `Closes #<番号>`（1行目）。GitHub は、PR がどの Issue を閉じるか（`closingIssuesReferences`）を PR の本文から読む。コミットメッセージに書くだけでは読まれず、`make review` も `make auto` もこれで Issue を見つけるため
   - やったこと
   - テストを書いたのは test-writer であること。テストの対象がなければ「テストの対象なし」
   - テストの名前を直したときは、何をどう直したか（code-reviewer が、ケースや期待値を変えていないか確かめられるように）
