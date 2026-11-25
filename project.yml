@@ -1,0 +1,65 @@
+name: LocalTodo
+
+options:
+  bundleIdPrefix: com.anton072
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Sign to Run Locally（Apple ID なしのアドホック署名）
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  LocalTodo:
+    type: application
+    platform: macOS
+    sources:
+      - LocalTodo
+    entitlements:
+      path: LocalTodo/LocalTodo.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anton072.LocalTodo
+        PRODUCT_NAME: LocalTodo
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: LocalTodo
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_HARDENED_RUNTIME: YES
+
+  LocalTodoTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - LocalTodoTests
+    dependencies:
+      - target: LocalTodo
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.anton072.LocalTodoTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/LocalTodo.app/Contents/MacOS/LocalTodo"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  LocalTodo:
+    build:
+      targets:
+        LocalTodo: all
+        LocalTodoTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - LocalTodoTests

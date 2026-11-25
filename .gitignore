@@ -1,1 +1,9 @@
 .DS_Store
+
+# XcodeGen が project.yml から生成する
+LocalTodo.xcodeproj/
+
+# Xcode のビルド生成物
+build/
+DerivedData/
+xcuserdata/
