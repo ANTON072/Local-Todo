@@ -158,6 +158,34 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(try corruptFiles().count, 1)
     }
 
+    // MARK: - 期限日の読み込みの境目
+
+    func testImpossibleDateIsReadWithoutValidation() throws {
+        // 日付として正しいかは検査しない。手で書き換えた1件のためにファイル全体を読めなくしないため
+        let todos = try Persistence.decode(fileJSON(dueDate: #"{"date": "2026-02-30"}"#))
+        let due = try XCTUnwrap(todos.first?.dueDate)
+        guard case .date(let day) = due else {
+            return XCTFail("日付だけの期限日として読めていない: \(due)")
+        }
+        XCTAssertEqual([day.year, day.month, day.day], [2026, 2, 30])
+    }
+
+    func testMalformedCalendarDayIsDecodingError() {
+        for text in ["2026-11", "2026-xx-25", "2026-11-25-01", "abc", ""] {
+            XCTAssertThrowsError(
+                try Persistence.decode(fileJSON(dueDate: #"{"date": "\#(text)"}"#)), "\(text) が読めてしまった")
+        }
+    }
+
+    func testDueDateWithBothKeysIsDecodingError() {
+        let json = fileJSON(dueDate: #"{"date": "2026-11-25", "dateTime": "2026-11-25T06:00:00.000Z"}"#)
+        XCTAssertThrowsError(try Persistence.decode(json))
+    }
+
+    func testDueDateWithoutKeysIsDecodingError() {
+        XCTAssertThrowsError(try Persistence.decode(fileJSON(dueDate: "{}")))
+    }
+
     // MARK: - まとめ保存
 
     func testScheduledSavesAreCoalescedIntoLastOne() throws {
@@ -215,6 +243,27 @@ final class PersistenceTests: XCTestCase {
 
     private func titles(at url: URL) throws -> [String] {
         try Persistence.decode(Data(contentsOf: url)).map(\.title)
+    }
+
+    /// 期限日の部分だけを差し替えた、Todo 1件のファイルの中身。
+    private func fileJSON(dueDate: String) -> Data {
+        Data(
+            """
+            {
+              "version": 1,
+              "todos": [
+                {
+                  "id": "6F9619FF-8B86-D011-B42D-00C04FC964FF",
+                  "title": "企画書を送る",
+                  "links": [],
+                  "descriptionText": "",
+                  "tags": [],
+                  "createdAt": "2026-11-25T02:00:00.000Z",
+                  "dueDate": \(dueDate)
+                }
+              ]
+            }
+            """.utf8)
     }
 
     private func corruptFiles() throws -> [String] {
