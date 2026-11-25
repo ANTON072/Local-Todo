@@ -15,6 +15,10 @@
 - 未決事項はPRDに書かず、TODO.md に書く。
 - 実装のタスクは GitHub の Issue に書き、本文は .github/ISSUE_TEMPLATE/task.md の形にする。1つの PR が5ファイル程度の変更で済む大きさに切る。
 
+## Issue の実装
+
+Issue を実装するときは implement-issue スキルを使う。テストは実装より先に、test-writer エージェント（`.claude/agents/test-writer.md`）が別の worktree で書く。理由と手順はスキルに書いてある。
+
 ## コードの検査
 
 Swift のファイルを編集したら、PR を出す前に `make check` を実行し、リントの指摘をなくしてテストを通す。hook では自動実行しないので、毎回自分で実行する（理由は docs/adr/0001-code-checks.md）。
