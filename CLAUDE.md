@@ -23,6 +23,8 @@
 
 Issue を実装するときは implement-issue スキルを使う。テストは実装より先に、test-writer エージェント（`.claude/agents/test-writer.md`）が別の worktree で書く。理由と手順はスキルに書いてある。
 
+implement-issue と address-review-comment は、環境変数 `LOCAL_TODO_AUTO=1` があるとき（`make auto` から呼ばれたとき）を自動実行、それ以外を対話とする。自動実行のときは、ユーザーに聞く場面で聞かずに止まる。Issue や PR の中身の問題なら、理由をコメントして `needs-human` ラベルを付ける。手元の状態の問題なら、何もせずに中断する。
+
 ## コードの検査
 
 Swift のファイルを編集したら、PR を出す前に `make check` を実行し、リントの指摘をなくしてテストを通す。hook では自動実行しないので、毎回自分で実行する（理由は docs/adr/0001-code-checks.md）。
@@ -41,6 +43,7 @@ PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md
 
 - PR を出したら、`make review PR=<PR の URL>` の実行をユーザーに案内する。自分では実行しない。
 - レビューコメントへの対応は、1件ずつ address-review-comment スキルで行う。修正の確認は `make re-review COMMENT=<コメントの URL>`、push したあとの返信と resolve は `make resolve COMMENT=<コメントの URL>` で行う。
+- 自動実行のときは、`make review` の案内を出さない。address-review-comment は、PR の未解決のコメントをすべて1件ずつ回し、決められないコメントは返信して resolve せずに残す。
 
 ## 用語
 
