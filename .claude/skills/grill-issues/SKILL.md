@@ -16,7 +16,11 @@ disable-model-invocation: true
 
 ## 1. ブランチを切る
 
-- 詰める Issue を読む：`gh issue view <番号> --json title,body,labels --jq '"\(.title)\n\n\(.body)"'`。Issue が複数なら、すべて読む。
+- 詰める Issue を、ラベルとコメントもあわせて読む。Issue が複数なら、すべて読む。ラベルは 2 で `needs-human` を、6 で外すかどうかを判断するのに使う。コメントには、自動の実装が止まった理由が書かれている。
+
+  ```bash
+  gh issue view <番号> --json title,body,labels,comments --jq '"\(.title)\nラベル：\([.labels[].name] | join(", "))\n\n\(.body)\n\n## コメント\n\(.comments | map("### \(.author.login)\n\(.body)") | join("\n\n"))"'
+  ```
 - コミット前の変更が残っていないことを確かめる（`git status --short`）。残っていれば、どうするかユーザーに聞く。
 - main を最新にして、ブランチを切る：`git switch main`、`git pull --ff-only`、`git switch -c docs/<短い英語の名前>`
   - Issue が1件なら `docs/<番号>-<短い英語の名前>` にする。
