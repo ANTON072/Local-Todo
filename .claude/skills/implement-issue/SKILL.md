@@ -32,10 +32,14 @@ Issue 1件を、ブランチを切るところから PR を出すところまで
 ## 決めてほしいこと
 
 ## 途中までの変更
-（あれば。push したブランチの名前や、残した worktree のパス）
+（あれば。push したブランチの名前や、残した test-writer の worktree のパスとブランチ）
 ```
 
-**途中までの変更を残す**：コミット前の変更があれば、すべてコミットする。メッセージの1行目は「途中まで：<何をしたか>」にする。`git push -u origin <ブランチ>` で push し、PR は出さずに `git switch main` で main に戻る。
+**途中までの変更を残す**：
+
+- コミット前の変更があれば、手順 8 と同じく、この Issue で変えたファイルだけを `git add` してコミットする。`git add -A` や `git add .` は使わない。test-writer の worktree はリポジトリの中（`.claude/worktrees/…`）に作られ、.gitignore にも入っていないので、まとめて追加すると、worktree が埋め込みリポジトリとしてコミットされてしまう。
+- メッセージの1行目は「途中まで：<何をしたか>」にする。`git push -u origin <ブランチ>` で push し、PR は出さずに `git switch main` で main に戻る。
+- test-writer の worktree が残っているあいだ（手順 2 で呼んでから、手順 5 で片づけるまで）に止まったときは、どの手順で止まっても worktree は片づけずに残す。コメントの「途中までの変更」に、worktree のパスとブランチを書く。取り込んでいないテストを、あとで人が見つけられるようにするため。
 
 - `in-progress` ラベルにはさわらない（`make auto` が扱う）。
 - 最後の報告の1行目は、`完了`（PR を出した）・`needs-human`・`中断` のどれかにする。
@@ -84,7 +88,7 @@ Agent ツールの結果に、test-writer の worktree のパスとブランチ�
 次の順に進める。片づけは必ず最後にする。先に消すと、何が変わっていたかを確かめられなくなる。
 
 1. **確かめる**：`git -C <worktree のパス> status --porcelain --untracked-files=all` で、変わったファイルを見る。`LocalTodoTests/` 以外のファイルが変わっていたら、取り込まずにユーザーに知らせて止まる（test-writer の決まりに反しているため）。worktree は片づけずに残しておく。
-   - 自動実行のとき：needs-human で止まる。コメントの「途中までの変更」に、残した worktree のパスを書く。
+   - 自動実行のとき：needs-human で止まる。
 2. **取り込む**：`LocalTodoTests/` の中の、追加・変更されたファイルを、worktree のパスからこちらの同じ場所にコピーする：`cp <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/`。worktree は、こちらのブランチを切ったときと同じコミットから切られているので、既存のテストファイルもファイルごとコピーしてよい。
 3. **取り込めたことを確かめる**：1 で見たファイルごとに `diff <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/<ファイル>` を実行し、何も出ないことを確かめる。`git status --short LocalTodoTests/` にも、そのファイルがすべて出ていることを確かめる。
 4. **片づける**：worktree にはコミット前の変更が残っているので、`git worktree remove` は `--force` を付けないと失敗する。`git worktree remove --force <worktree のパス>` で消し、`git branch -D <worktree のブランチ>` を実行する。
