@@ -15,7 +15,11 @@ test: generate
 	xcodebuild test -scheme LocalTodo -destination 'platform=macOS'
 
 # PR を出す前に実行する。フォーマット → リント → テストの順に行う。
-check: format lint test
+# 依存ターゲットに並べると make -j で同時に走るので、レシピの中で1つずつ呼ぶ。
+check:
+	@$(MAKE) --no-print-directory format
+	@$(MAKE) --no-print-directory lint
+	@$(MAKE) --no-print-directory test
 
 # project.yml から LocalTodo.xcodeproj を生成する。
 generate:
