@@ -162,13 +162,37 @@ query($owner: String!, $repo: String!, $number: Int!) {
 }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'
 }
 
-# code-reviewer の最新のレビュー本文に「差分の外の指摘」があれば 0 を返す。
-# 差分の外の指摘はスレッドにならず、address-review-comment では対応できない。
-has_outside_findings() {
+# code-reviewer の最新のレビュー本文を出す。レビューがなければ空。取れなければ 1 を返す。
+latest_review_body() {
 	local pr_number="$1"
 	gh api "repos/{owner}/{repo}/pulls/${pr_number}/reviews" \
-		--jq '[.[] | select(.body | startswith("Claude Code（code-reviewer）のレビュー"))] | last | .body // ""' |
-		grep -q '^## 差分の外の指摘'
+		--jq '[.[] | select(.body | startswith("Claude Code（code-reviewer）のレビュー"))] | last | .body // ""'
+}
+
+# マージの関門になる判定は、読めなかったときに「問題なし」と読まないよう、読めなければその場で止める。
+# [[ ]] の中のコマンド置換には set -e が効かず、失敗すると空の文字列が 0 として比べられてしまうため。
+
+# 未解決のスレッドの数を UNRESOLVED に入れる。読めなければ、in-progress のまま止まる。
+read_unresolved() {
+	local number="$1" pr_number="$2" pr_url="$3"
+	if ! UNRESOLVED="$(unresolved_threads "$pr_number")" || [[ ! "$UNRESOLVED" =~ ^[0-9]+$ ]]; then
+		add_result "#${number}: 未解決のスレッドの数を読めずに止まりました（${pr_url}、in-progress のまま）"
+		finish 1
+	fi
+}
+
+# code-reviewer の最新のレビュー本文に「差分の外の指摘」があれば OUTSIDE_FINDINGS を yes にする。
+# 差分の外の指摘はスレッドにならず、address-review-comment では対応できない。読めなければ、in-progress のまま止まる。
+read_outside_findings() {
+	local number="$1" pr_number="$2" pr_url="$3" body
+	if ! body="$(latest_review_body "$pr_number")"; then
+		add_result "#${number}: レビュー本文を読めずに止まりました（${pr_url}、in-progress のまま）"
+		finish 1
+	fi
+	OUTSIDE_FINDINGS=""
+	if grep -q '^## 差分の外の指摘' <<<"$body"; then
+		OUTSIDE_FINDINGS="yes"
+	fi
 }
 
 # mergeable は、GitHub が計算し終えるまで UNKNOWN になるので、少し待って読み直す。
@@ -275,7 +299,8 @@ while true; do
 	fi
 
 	# レビューコメントに対応する。
-	if [[ "$(unresolved_threads "$pr_number")" -gt 0 ]]; then
+	read_unresolved "$number" "$pr_number" "$pr_url"
+	if [[ "$UNRESOLVED" -gt 0 ]]; then
 		if run_skill "$number" address "address-review-comment スキルで、${pr_url} の未解決のレビューコメントに対応してください。"; then
 			result="$(jq -c . "$RESULT_FILE")"
 		else
@@ -290,13 +315,15 @@ while true; do
 	fi
 
 	# 指摘にすべて対応できたか。
-	if [[ "$(unresolved_threads "$pr_number")" -gt 0 ]]; then
+	read_unresolved "$number" "$pr_number" "$pr_url"
+	if [[ "$UNRESOLVED" -gt 0 ]]; then
 		gh pr edit "$pr_number" --add-label needs-human >/dev/null
 		gh issue edit "$number" --remove-label in-progress >/dev/null
 		add_result "#${number}: needs-human（未解決のレビューコメントが残った: ${pr_url}）"
 		continue
 	fi
-	if has_outside_findings "$pr_number"; then
+	read_outside_findings "$number" "$pr_number" "$pr_url"
+	if [[ -n "$OUTSIDE_FINDINGS" ]]; then
 		comment_stop pr "$pr_number" \
 			"code-reviewer のレビュー本文に「差分の外の指摘」がある。差分の外の指摘はスレッドにならないので、address-review-comment では対応できない。" \
 			"レビュー本文の「差分の外の指摘」を読み、直すかどうかを決めてください。"
