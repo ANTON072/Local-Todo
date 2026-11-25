@@ -45,12 +45,14 @@ Issue の「やること」に `LocalTodoTests/` のテストファイルが挙�
 
 ## 5. テストを取り込む
 
-- Agent ツールの結果に、test-writer の worktree のパスとブランチが出る。
-- test-writer はコミットしないので、テストは worktree の中にコミット前の変更として残っている。ブランチからは取り込めない（`git checkout <ブランチ> -- <パス>` では何も取れない）。
-- 何が変わったかを見る：`git -C <worktree のパス> status --porcelain --untracked-files=all`
-- `LocalTodoTests/` 以外のファイルが変わっていたら、取り込まずにユーザーに知らせる（test-writer の決まりに反しているため）。
-- `LocalTodoTests/` の中の、追加・変更されたファイルを、worktree のパスからこちらの同じ場所にコピーする：`cp <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/`。worktree は、こちらのブランチを切ったときと同じコミットから切られているので、既存のテストファイルもファイルごとコピーしてよい。
-- コピーしたら、worktree とブランチを片づける。worktree にはコミット前の変更が残っているので、`git worktree remove --force <worktree のパス>` で消し、`git branch -D <worktree のブランチ>` を実行する。
+Agent ツールの結果に、test-writer の worktree のパスとブランチが出る。test-writer はコミットしないので、テストは worktree の中にコミット前の変更として残っている。ブランチからは取り込めない（`git checkout <ブランチ> -- <パス>` では何も取れない）。
+
+次の順に進める。片づけは必ず最後にする。先に消すと、何が変わっていたかを確かめられなくなる。
+
+1. **確かめる**：`git -C <worktree のパス> status --porcelain --untracked-files=all` で、変わったファイルを見る。`LocalTodoTests/` 以外のファイルが変わっていたら、取り込まずにユーザーに知らせて止まる（test-writer の決まりに反しているため）。worktree は片づけずに残しておく。
+2. **取り込む**：`LocalTodoTests/` の中の、追加・変更されたファイルを、worktree のパスからこちらの同じ場所にコピーする：`cp <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/`。worktree は、こちらのブランチを切ったときと同じコミットから切られているので、既存のテストファイルもファイルごとコピーしてよい。
+3. **取り込めたことを確かめる**：1 で見たファイルごとに `diff <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/<ファイル>` を実行し、何も出ないことを確かめる。`git status --short LocalTodoTests/` にも、そのファイルがすべて出ていることを確かめる。
+4. **片づける**：worktree にはコミット前の変更が残っているので、`git worktree remove` は `--force` を付けないと失敗する。`git worktree remove --force <worktree のパス>` で消し、`git branch -D <worktree のブランチ>` を実行する。
 
 ## 6. テストと実装を合わせる
 
