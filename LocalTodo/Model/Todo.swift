@@ -110,10 +110,15 @@ struct CalendarDay: Codable, Hashable, Comparable {
     /// アプリの中では Date からだけ作り、ありえない日付（2/30 など）が生まれないようにする。
     /// JSON からの読み込みでは検査しない。1件の不正な日付のためにファイル全体を読めなくするより、
     /// 比較が少しずれるだけで読めるほうがよいため。JSON が壊れるのは手で書き換えたときだけである。
+    ///
+    /// 年月日は常にグレゴリオ暦で取り出し、渡されたカレンダーからはタイムゾーンだけを使う。
+    /// 和暦のカレンダーのまま取り出すと、元号が変わるところで年が1に戻り、順序が逆になるため。
     init(_ date: Date, calendar: Calendar) {
-        year = calendar.component(.year, from: date)
-        month = calendar.component(.month, from: date)
-        day = calendar.component(.day, from: date)
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        year = gregorian.component(.year, from: date)
+        month = gregorian.component(.month, from: date)
+        day = gregorian.component(.day, from: date)
     }
 
     static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool {

@@ -103,6 +103,18 @@ final class TodoTests: XCTestCase {
         XCTAssertFalse(due.isOverdue(now: now, calendar: newYork))
     }
 
+    // MARK: - 和暦
+
+    func testJapaneseCalendarKeepsOrderAcrossEraChange() throws {
+        // 和暦では 2019/4/30 は平成31年、5/1 は令和元年。年だけ見ると順序が逆になる。
+        var japanese = Calendar(identifier: .japanese)
+        japanese.timeZone = tokyo.timeZone
+        let due = DueDate.date(CalendarDay(try date(2019, 4, 30), calendar: japanese))
+        let now = try date(2019, 5, 1, 12, 0, 0)
+        XCTAssertEqual(due.heading(now: now, calendar: japanese), .beforeToday)
+        XCTAssertTrue(due.isOverdue(now: now, calendar: japanese))
+    }
+
     // MARK: - Inbox／アーカイブ
 
     func testTodoIsArchivedOnlyWhenCompleted() throws {
