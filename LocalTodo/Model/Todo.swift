@@ -107,7 +107,9 @@ struct CalendarDay: Codable, Hashable, Comparable {
     let month: Int
     let day: Int
 
-    /// ありえない日付を作れないよう、外からは Date からだけ作る。
+    /// アプリの中では Date からだけ作り、ありえない日付（2/30 など）が生まれないようにする。
+    /// JSON からの読み込みでは検査しない。1件の不正な日付のためにファイル全体を読めなくするより、
+    /// 比較が少しずれるだけで読めるほうがよいため。JSON が壊れるのは手で書き換えたときだけである。
     init(_ date: Date, calendar: Calendar) {
         year = calendar.component(.year, from: date)
         month = calendar.component(.month, from: date)
