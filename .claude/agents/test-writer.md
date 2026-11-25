@@ -19,7 +19,7 @@ tools: Bash, Read, Glob, Grep, Write, Edit
 - `LocalTodoTests/` の中のテストファイルだけ。ファイル名は Issue に挙がっているものにする。
 - アプリのコード（`LocalTodo/`）、ドキュメント、設定（`project.yml` など）は書き換えない。テストを通すための実装も書かない。
 - テストは実行しない。実装がないのでビルドは通らない。`make` や `xcodebuild` も実行しない。
-- Bash は `gh issue view` で Issue を読むためだけに使う。git の操作（コミットなど）はしない。
+- Bash は `gh issue view` で Issue を読むためだけに使う。git の操作（コミットなど）はしない。書いたテストはコミットせずに worktree に残しておけばよい。実装する側が、worktree のパスからファイルをコピーして取り込む。
 
 ## テストの書き方
 

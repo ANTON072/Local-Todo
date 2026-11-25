@@ -46,9 +46,11 @@ Issue の「やること」に `LocalTodoTests/` のテストファイルが挙�
 ## 5. テストを取り込む
 
 - Agent ツールの結果に、test-writer の worktree のパスとブランチが出る。
-- テストのファイルだけを取り込む：`git checkout <worktree のブランチ> -- <テストファイルのパス>`
-- 取り込んだら、worktree とブランチを片づける：`git worktree remove <worktree のパス>`、`git branch -D <worktree のブランチ>`
+- test-writer はコミットしないので、テストは worktree の中にコミット前の変更として残っている。ブランチからは取り込めない（`git checkout <ブランチ> -- <パス>` では何も取れない）。
+- 何が変わったかを見る：`git -C <worktree のパス> status --porcelain --untracked-files=all`
 - `LocalTodoTests/` 以外のファイルが変わっていたら、取り込まずにユーザーに知らせる（test-writer の決まりに反しているため）。
+- `LocalTodoTests/` の中の、追加・変更されたファイルを、worktree のパスからこちらの同じ場所にコピーする：`cp <worktree のパス>/LocalTodoTests/<ファイル> LocalTodoTests/`。worktree は、こちらのブランチを切ったときと同じコミットから切られているので、既存のテストファイルもファイルごとコピーしてよい。
+- コピーしたら、worktree とブランチを片づける。worktree にはコミット前の変更が残っているので、`git worktree remove --force <worktree のパス>` で消し、`git branch -D <worktree のブランチ>` を実行する。
 
 ## 6. テストと実装を合わせる
 
