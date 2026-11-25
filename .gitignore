@@ -7,3 +7,10 @@ LocalTodo.xcodeproj/
 build/
 DerivedData/
 xcuserdata/
+
+# make auto が残す claude -p の出力
+.auto-logs/
+
+# Agent ツールが作る worktree（test-writer）。needs-human で止まると残るので、
+# 次の Issue の「コミット前の変更が残っていないか」の確かめに引っかからないようにする。
+.claude/worktrees/

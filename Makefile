@@ -1,4 +1,4 @@
-.PHONY: format lint test check generate review re-review resolve
+.PHONY: format lint test check generate review re-review resolve auto
 
 SWIFT_DIRS := LocalTodo LocalTodoTests
 
@@ -38,3 +38,8 @@ re-review:
 # 修正をプッシュしたあと、レビューコメント1件に返信して resolve する。
 resolve:
 	@scripts/resolve.sh "$(COMMENT)"
+
+# ready の Issue を、人の手を介さずに、実装 → PR → レビュー → レビュー対応 → マージまで進める。
+# LIMIT には、手をつける Issue の数の上限を渡す（省略すると、取れるだけ処理する）。
+auto:
+	@LIMIT="$(LIMIT)" scripts/auto.sh
