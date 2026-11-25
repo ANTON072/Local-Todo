@@ -101,6 +101,38 @@ enum DueDate: Codable, Hashable {
     }
 }
 
+// JSON では {"date": "2026-11-25"} か {"dateTime": "2026-11-25T06:00:00.000Z"} の形にする。
+// 自動のエンコードだと {"date": {"_0": {...}}} のように読みにくくなるため。
+extension DueDate {
+    private enum CodingKeys: String, CodingKey {
+        case date
+        case dateTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard container.allKeys.count == 1 else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: container.codingPath, debugDescription: "date か dateTime のどちらか1つが必要"))
+        }
+        if let day = try container.decodeIfPresent(CalendarDay.self, forKey: .date) {
+            self = .date(day)
+        } else {
+            self = .dateTime(try container.decode(Date.self, forKey: .dateTime))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .date(let day):
+            try container.encode(day, forKey: .date)
+        case .dateTime(let date):
+            try container.encode(date, forKey: .dateTime)
+        }
+    }
+}
+
 /// 年・月・日だけを持つ、暦の上の1日。
 struct CalendarDay: Codable, Hashable, Comparable {
     let year: Int
@@ -121,8 +153,34 @@ struct CalendarDay: Codable, Hashable, Comparable {
         day = gregorian.component(.day, from: date)
     }
 
+    private init(year: Int, month: Int, day: Int) {
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
     static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+}
+
+// JSON では "2026-11-25" の形にする。タイムゾーンを持たない暦の上の日付であることが、書き方から分かる。
+extension CalendarDay {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let text = try container.decode(String.self)
+        // 数字として読めるかだけを見る。日付として正しいか（2/30 など）は検査しない（init(_:calendar:) のコメント参照）。
+        let parts = text.split(separator: "-", omittingEmptySubsequences: false).map { Int($0) }
+        guard parts.count == 3, let year = parts[0], let month = parts[1], let day = parts[2] else {
+            throw DecodingError.dataCorruptedError(
+                in: container, debugDescription: "YYYY-MM-DD の形ではない: \(text)")
+        }
+        self.init(year: year, month: month, day: day)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(String(format: "%04d-%02d-%02d", year, month, day))
     }
 }
 
