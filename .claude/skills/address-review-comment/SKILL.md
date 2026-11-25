@@ -11,11 +11,11 @@ PR のレビューコメント1件を、修正から resolve まで通して片�
 
 ## 自動実行のとき
 
-最初に `echo "${LOCAL_TODO_AUTO:-}"` を実行する。`1` が出れば自動実行（`make auto` から呼ばれた）、それ以外は対話（ユーザーが呼んだ）とする。プロンプトの言葉では見分けない。たまたまその言葉を含む依頼で取り違えないため。
+最初に `printenv LOCAL_TODO_AUTO` を実行する。`1` が出れば自動実行（`make auto` から呼ばれた）、それ以外（何も出ない）は対話（ユーザーが呼んだ）とする。プロンプトの言葉では見分けない。たまたまその言葉を含む依頼で取り違えないため。`echo "${LOCAL_TODO_AUTO:-}"` のように変数を展開する書き方は、許可の一覧にあっても確認が出るので使わない。
 
-対話のときは、各手順に書いたとおりにユーザーに聞いて止まる。自動実行のときは答える人がいないので、ユーザーに聞く場面では、次のどちらかで止まる。どちらで止まるかは、各手順の「自動実行のとき」に書く。
+対話のときは、各手順に書いたとおりにユーザーに聞いて止まる。自動実行のときは、ユーザーに聞く場面でも聞かずに、次のどちらかで止まる。その場にいる人には、権限の確認（組織の設定で `make` や `git push` に要る）に答えることだけを任せ、設計の判断は grill-issues で前もって済ませておくため。どちらで止まるかは、各手順の「自動実行のとき」に書く。
 
-- **needs-human**：指摘の中身の問題で、そのコメントだけ止まる。そのコメントに下の形で返信し（`gh api --method POST "repos/{owner}/{repo}/pulls/<PR の番号>/comments/<コメントID>/replies" --field body=@<ファイル>`）、resolve せずに残す。残りのコメントは続ける。直せる指摘まで止める理由はないため。
+- **needs-human**：指摘の中身の問題で、そのコメントだけ止まる。そのコメントに下の形で返信し（返信の中身をファイルに書いて `make reply COMMENT=<コメントの URL> BODY=<ファイル>`）、resolve せずに残す。残りのコメントは続ける。直せる指摘まで止める理由はないため。
 - **中断**：手元の状態の問題で止まる。PR には何もせずに終わる。`make auto` はそこで止まる。
 
 返信の形。1行目は決まった書き方にして、手で書いたコメントと見分ける。
@@ -31,25 +31,16 @@ PR のレビューコメント1件を、修正から resolve まで通して片�
 （あれば。stash の名前）
 ```
 
-自動実行のときは、PR の未解決のコメントをすべて、1件ずつこの手順で回す。未解決のコメントは、PR の未解決のスレッドの最初のコメントとして探す。
+自動実行のときは、PR の未解決のコメントをすべて、1件ずつこの手順で回す。未解決のコメントの URL は `make unresolved PR=<PR の URL>` で出る（未解決のスレッドの、最初のコメント）。
 
-```bash
-gh api graphql --field owner='{owner}' --field repo='{repo}' --field number=<PR の番号> --raw-field query='
-query($owner: String!, $repo: String!, $number: Int!) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100) { nodes { isResolved comments(first: 1) { nodes { url } } } }
-    }
-  }
-}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not) | .comments.nodes[0].url'
-```
+コメントを読む・返信する・未解決のものを探すのには、`gh api` を直接使わず、`make comment`・`make reply`・`make unresolved` を使う。自動実行では `gh api` を許可していないため（`gh api` を許すと、マージやスレッドの resolve もできてしまう。docs/adr/0005-auto-run.md）。
 
 すべて回し終えたら、needs-human で残したコメントが1件でもあれば、`gh pr edit <PR の番号> --add-label needs-human` で PR に `needs-human` を付ける。
 
 ## 0. コメントを読む
 
 - URL の `#discussion_r` の後ろの数字がコメントID。`pull/<番号>` が PR の番号。
-- 内容を読む：`gh api "repos/{owner}/{repo}/pulls/comments/<コメントID>" --jq '{user:.user.login,path,line,body,diff_hunk}'`
+- 内容を読む：`make comment COMMENT=<コメントの URL>`
 - 今のブランチが PR のブランチ（`gh pr view <番号> --json headRefName`）であることを確かめる。違えば、そのブランチに切り替えてよいかユーザーに聞く。
   - 自動実行のとき：コミット前の変更がないことを確かめてから、聞かずに PR のブランチに切り替えて（`git switch <ブランチ>`、`git pull --ff-only`）続ける。
 - コミット前の変更が残っていないことを確かめる（`git status --short`）。残っていれば、どうするかユーザーに聞く。ほかの変更が混ざると、make re-review の差分に入ってしまうため。
@@ -120,7 +111,18 @@ make resolve COMMENT=<コメントの URL>
 
 ## 最後の報告
 
-自動実行のときは、1行目を次のどれかにし、続けてコメントごとの結果（resolve した／needs-human で残した）を書く。
+自動実行のときは、終わる前に、結果を `make auto` に渡す。
+
+1. `printenv LOCAL_TODO_RESULT` でファイルのパスを読む。
+2. そのパスに、Write ツールで次の形の JSON を書く。`status` は `完了`・`needs-human`・`中断` のどれか。`pr_url` は対応した PR の URL。`summary` は、コメントごとの結果（resolve した／needs-human で残した）か、中断した理由。
+
+   ```json
+   {"status": "完了", "pr_url": "https://github.com/…/pull/<番号>", "summary": "…"}
+   ```
+
+3. 最後に「終わりました。/exit で閉じてください。」と伝える。閉じると `make auto` が次へ進む。
+
+`status` は次のとおりに選ぶ。
 
 - `完了`：すべてのコメントを resolve した
 - `needs-human`：needs-human で残したコメントがある

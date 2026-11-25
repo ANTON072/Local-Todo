@@ -43,7 +43,21 @@ PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md
 
 - PR を出したら、`make review PR=<PR の URL>` の実行をユーザーに案内する。自分では実行しない。
 - レビューコメントへの対応は、1件ずつ address-review-comment スキルで行う。修正の確認は `make re-review COMMENT=<コメントの URL>`、push したあとの返信と resolve は `make resolve COMMENT=<コメントの URL>` で行う。
-- 自動実行のときは、`make review` の案内を出さない。address-review-comment は、PR の未解決のコメントをすべて1件ずつ回し、決められないコメントは返信して resolve せずに残す。
+- 自動実行のときは、`make review` の案内を出さない。`make review` は `make auto` が呼ぶ（理由は docs/adr/0005-auto-run.md）。address-review-comment は、PR の未解決のコメントをすべて1件ずつ回し、決められないコメントは返信して resolve せずに残す。
+
+## 自動実行（make auto）
+
+`make auto` は、`ready` の Issue を1件ずつ、実装 → PR → `make review` → レビュー対応まで進め、`auto-merge` の Issue はマージまで進める（理由は docs/adr/0005-auto-run.md）。`make auto LIMIT=<数>` で、手をつける Issue の数の上限を決める。
+
+組織の設定で `make` や `git push` に確認が要るので、完全に人の手は離さない。`make auto` は手順ごとに対話の `claude` を開く。人はその場で確認に答え、スキルが「終わりました」と言ったら `/exit` で閉じる。スキルは設計の判断をその場で聞かず、決められなければ `needs-human` で止まる。
+
+ラベルの意味：
+
+- `ready`（Issue）：詰め終わった。実装してよい。grill-issues が付ける
+- `auto-merge`（Issue）：レビューの指摘にすべて対応したら、自動でマージしてよい。画面にかかわる Issue には付けない。grill-issues が付ける
+- `in-progress`（Issue）：`make auto` が処理中。`make auto` が付け外しする。残っていれば、前の実行が途中で落ちている
+- `ready-to-merge`（PR）：レビューの指摘にすべて対応した。人がマージするだけ
+- `needs-human`（Issue か PR）：自動では決められないことがある。理由はコメントに書いてある
 
 ## 用語
 
