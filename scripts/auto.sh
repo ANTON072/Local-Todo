@@ -28,7 +28,14 @@ mkdir -p "$log_dir"
 results=()
 add_result() { results+=("$1"); }
 
+# 一覧と通知を出して終わる。決まった場所で止めるときは、ここを呼ぶ。
 finish() {
+	FINISHED="yes"
+	report "$1"
+	exit "$1"
+}
+
+report() {
 	local status="$1"
 	echo
 	echo "== make auto の結果"
@@ -42,8 +49,26 @@ finish() {
 		message="途中で止まりました（${message}）"
 	fi
 	osascript -e "display notification \"${message}\" with title \"make auto\"" >/dev/null 2>&1 || true
-	exit "$status"
 }
+
+# finish を通らずに終わったとき（set -e で想定外のコマンドの失敗で止まったときなど）も、一覧と通知を出す。
+# 人が見ていない間に止まっても、気づけるようにするため。
+FINISHED=""
+CURRENT_ISSUE=""
+on_exit() {
+	local status=$?
+	if [[ -z "$FINISHED" ]]; then
+		FINISHED="yes"
+		if [[ -n "$CURRENT_ISSUE" ]]; then
+			add_result "#${CURRENT_ISSUE}: 想定外の失敗で止まりました（終了コード ${status}。in-progress のまま。どこまで進んだかを確かめてください）"
+		else
+			add_result "想定外の失敗で止まりました（終了コード ${status}）"
+		fi
+		[[ "$status" -ne 0 ]] || status=1
+		report "$status"
+	fi
+}
+trap on_exit EXIT
 
 # --- ラベル ---------------------------------------------------------------
 
@@ -226,6 +251,7 @@ fi
 
 count=0
 while true; do
+	CURRENT_ISSUE=""
 	if [[ -n "$limit" && "$count" -ge "$limit" ]]; then
 		echo "LIMIT（${limit} 件）に達しました。" >&2
 		break
@@ -237,6 +263,7 @@ while true; do
 		break
 	fi
 	count=$((count + 1))
+	CURRENT_ISSUE="$number"
 
 	# auto-merge は、書いたセッションを動かす前に読んでおく。書いたセッションは gh issue edit を使えるので、
 	# あとから auto-merge を付けても、マージの判定に効かないようにするため。
