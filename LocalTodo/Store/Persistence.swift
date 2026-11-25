@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// Todo の全件を JSON ファイル1つに読み書きする（DB を使わない理由は docs/adr/0003-json-file-storage.md）。
+/// Todo の全件を JSON ファイル1つに読み書きする（DB を使わない理由は docs/adr/0004-json-file-storage.md）。
 ///
 /// `load`・`scheduleSave`・`saveNow` はメインスレッドから呼ぶ。書き込みは直列のキュー1本に並べるので、
 /// 古い内容の書き込みが新しい内容のあとに終わって上書きすることはない。
