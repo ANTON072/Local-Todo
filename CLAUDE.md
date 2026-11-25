@@ -15,6 +15,10 @@
 - 未決事項はPRDに書かず、TODO.md に書く。
 - 実装のタスクは GitHub の Issue に書き、本文は .github/ISSUE_TEMPLATE/task.md の形にする。1つの PR が5ファイル程度の変更で済む大きさに切る。
 
+## Issue を詰める
+
+実装する前の Issue は grill-issues スキルでユーザーと詰める。決めたことを Issue の本文・ADR・CONTEXT.md に書き、ドキュメントだけの PR がマージされたら、Issue に `ready` ラベルを付ける。`ready` は「詰め終わって、決めたことが main に入った」という意味で付ける。
+
 ## Issue の実装
 
 Issue を実装するときは implement-issue スキルを使う。テストは実装より先に、test-writer エージェント（`.claude/agents/test-writer.md`）が別の worktree で書く。理由と手順はスキルに書いてある。
