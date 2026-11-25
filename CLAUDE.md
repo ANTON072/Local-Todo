@@ -17,7 +17,15 @@
 
 ## コードの検査
 
-検討中
+Swift のファイルを編集したら、PR を出す前に `make check` を実行し、リントの指摘をなくしてテストを通す。hook では自動実行しないので、毎回自分で実行する（理由は docs/adr/0001-code-checks.md）。
+
+`make check` はフォーマット → リント → テストの順に実行する。1つずつ実行するときは次を使う。
+
+- フォーマット：`make format`（`swift format -i -r LocalTodo LocalTodoTests`）
+- リント：`make lint`（`swift format lint --strict -r LocalTodo LocalTodoTests`。警告があっても失敗にする）
+- テスト：`make test`（`xcodegen generate` で `LocalTodo.xcodeproj` を作り直してから `xcodebuild test -scheme LocalTodo -destination 'platform=macOS'`）
+
+フォーマットの規則は `.swift-format` に書く。
 
 ## 用語
 
