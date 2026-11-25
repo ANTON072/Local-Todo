@@ -31,6 +31,7 @@ Skill ツールで `grilling` と `domain-modeling` を呼び、その手順に�
 
 - 質問の範囲は、渡された Issue の「なぜやるか」「やること」「やらないこと」「先に終わっている必要がある Issue」。test-writer がテストを書ける程度まで、ケースと期待値がはっきりしているかを確かめる。
 - Issue が `needs-human` なら、付いているコメント（自動の実装が止まった理由）から先に片づける。
+- その Issue の途中までのブランチ（`feature/<番号>-*`）が、手元（`git branch --list 'feature/<番号>-*'`）か origin（`git ls-remote --heads origin 'refs/heads/feature/<番号>-*'`）に残っていれば、消すか手で仕上げるかをユーザーに聞く。残したまま `ready` にすると、implement-issue は自動実行のときに中断する。
 - 詰めている途中で、別の Issue に分けるべきことや、未決のまま残すことが出てきたら、ユーザーに確かめてから扱う。
   - 別の Issue にする：.github/ISSUE_TEMPLATE/task.md の形で作ってよいかユーザーに聞く。
   - 未決のまま残す：TODO.md に書く（CLAUDE.md の「ドキュメントの書き分け」）。その Issue は `ready` にしない。
