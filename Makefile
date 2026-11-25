@@ -1,4 +1,4 @@
-.PHONY: format lint test check generate review re-review resolve auto
+.PHONY: format lint test check generate review re-review resolve comment reply unresolved auto
 
 SWIFT_DIRS := LocalTodo LocalTodoTests
 
@@ -38,6 +38,18 @@ re-review:
 # 修正をプッシュしたあと、レビューコメント1件に返信して resolve する。
 resolve:
 	@scripts/resolve.sh "$(COMMENT)"
+
+# レビューコメント1件の中身を出す。COMMENT にはコメントの URL か ID を渡す。
+comment:
+	@scripts/comment.sh show "$(COMMENT)"
+
+# レビューコメント1件に、BODY のファイルの中身で返信する（resolve はしない）。
+reply:
+	@scripts/comment.sh reply "$(COMMENT)" "$(BODY)"
+
+# PR の未解決のスレッドの、最初のコメントの URL を出す。PR には URL か番号を渡す。
+unresolved:
+	@scripts/comment.sh unresolved "$(PR)"
 
 # ready の Issue を、人の手を介さずに、実装 → PR → レビュー → レビュー対応 → マージまで進める。
 # LIMIT には、手をつける Issue の数の上限を渡す（省略すると、取れるだけ処理する）。

@@ -104,6 +104,9 @@ schema='{
 }'
 
 # 自動実行のときだけ効く許可。対話のセッションには効かせないので、.claude/settings.json には入れない。
+# gh は、スキルが使う形だけにする。gh pr merge と gh api は許可しない。gh api を許すと、REST でのマージや
+# GraphQL でのスレッドの resolve ができ、マージとレビューの関門（このスクリプトが握る）を通り抜けられるため。
+# レビューコメントの読み書きは make comment・make reply・make unresolved、resolve は make resolve に限る。
 # make は、スキルが使うものだけにする。make review と make auto は、書いたセッションには呼ばせない。
 # 変数を展開するコマンド（echo "$X" など）は、許可に挙げても dontAsk では拒否される。スキルが自動実行かどうかを
 # 見分けるのに使う printenv LOCAL_TODO_AUTO は、展開を含まないので許可できる。
@@ -111,11 +114,18 @@ allowed_tools=(
 	"Read" "Edit" "Write" "Glob" "Grep" "Agent" "Skill"
 	"Bash(printenv LOCAL_TODO_AUTO)"
 	"Bash(echo:*)" "Bash(cat:*)" "Bash(ls:*)" "Bash(cp:*)" "Bash(diff:*)"
-	"Bash(git:*)" "Bash(gh:*)"
+	"Bash(git:*)"
+	"Bash(gh issue view:*)" "Bash(gh issue comment:*)" "Bash(gh issue edit:*)"
+	"Bash(gh pr create:*)" "Bash(gh pr view:*)" "Bash(gh pr edit:*)" "Bash(gh pr diff:*)" "Bash(gh pr list:*)"
 	"Bash(make check)" "Bash(make format)" "Bash(make lint)" "Bash(make test)" "Bash(make generate)"
 	"Bash(make re-review:*)" "Bash(make resolve:*)"
+	"Bash(make comment:*)" "Bash(make reply:*)" "Bash(make unresolved:*)"
 	"Bash(swift format:*)" "Bash(xcodegen:*)" "Bash(xcodebuild:*)"
 )
+
+# 許可の一覧より強く、はっきり拒否するもの。
+# main への直接の push は、GitHub のルールセット（protect-main の pull_request）でも拒否される。
+disallowed_tools=("Bash(gh pr merge:*)" "Bash(gh api:*)" "Bash(git push origin main:*)" "Bash(git push origin HEAD:main:*)")
 
 # スキルを自動実行で呼び、結果の JSON（status・pr_url・summary）を標準出力に出す。
 # 受け取れなかったときは 1 を返す。
@@ -124,10 +134,13 @@ run_skill() {
 	log="${log_dir}/$(date +%Y%m%d-%H%M%S)-${number}-${step}.json"
 	echo "Issue #${number}: ${step} を動かしています…（ログ: ${log}）" >&2
 	# --allowedTools は複数の値を取るので、プロンプトは標準入力から渡す。
-	if ! LOCAL_TODO_AUTO=1 claude -p --no-session-persistence \
+	# --setting-sources project：手元の .claude/settings.local.json やユーザーの設定の許可
+	# （gh pr * や gh api * など）が、上の一覧に足されないようにする。
+	if ! LOCAL_TODO_AUTO=1 claude -p --no-session-persistence --setting-sources project \
 		--output-format json --json-schema "$schema" \
 		--permission-mode dontAsk \
 		--allowedTools "${allowed_tools[@]}" \
+		--disallowedTools "${disallowed_tools[@]}" \
 		<<<"$prompt" >"$log"; then
 		echo "Issue #${number}: ${step} の claude -p が失敗しました。" >&2
 		return 1
@@ -209,6 +222,13 @@ while true; do
 	fi
 	count=$((count + 1))
 
+	# auto-merge は、書いたセッションを動かす前に読んでおく。書いたセッションは gh issue edit を使えるので、
+	# あとから auto-merge を付けても、マージの判定に効かないようにするため。
+	if gh issue view "$number" --json labels --jq '.labels[].name' | grep -qxF auto-merge; then
+		auto_merge="yes"
+	else
+		auto_merge=""
+	fi
 	gh issue edit "$number" --remove-label ready --add-label in-progress >/dev/null
 
 	# 実装して PR を出す。
@@ -306,7 +326,7 @@ while true; do
 	# auto-merge の Issue だけ、自動でマージする。
 	merged=""
 	reason=""
-	if ! gh issue view "$number" --json labels --jq '.labels[].name' | grep -qxF auto-merge; then
+	if [[ -z "$auto_merge" ]]; then
 		reason="auto-merge が付いていない"
 	elif gh pr view "$pr_number" --json body --jq '.body' | grep -qF '画面の確認はしていない'; then
 		reason="画面の確認をしていない"
