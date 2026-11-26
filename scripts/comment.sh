@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PR のレビューコメントを読む・返信する・未解決のものを挙げる。
-# address-review-comment スキルが使う。make auto で動く書いたセッションには gh api を許可しないので
-# （gh api を許すと、マージやスレッドの resolve もできてしまう。docs/adr/0005-auto-run.md）、
-# スキルが gh api でしていたことを、決まった動きだけのこのスクリプトにまとめる。
+# implement-issue と address-review-comment スキルが使う。スキルが gh api でしていたことを、
+# 決まった動きだけのこのスクリプトにまとめ、スキルの手順を短くする。
+# もとは、make auto（廃止）で gh api を許さないために作った（docs/adr/0006-one-skill-from-implementation-to-review.md）。
 # 使い方:
 #   scripts/comment.sh show <コメントの URL か ID>          コメント1件の中身を出す
 #   scripts/comment.sh reply <コメントの URL か ID> <ファイル>  コメントに、ファイルの中身で返信する
