@@ -17,13 +17,14 @@
 
 ## Issue を詰める
 
-実装する前の Issue は grill-issues スキルでユーザーと詰める。決めたことを Issue の本文・ADR・CONTEXT.md に書き、ドキュメントだけの PR がマージされたら、Issue に `ready` ラベルを付ける。`ready` は「詰め終わって、決めたことが main に入った」という意味で付ける。
+実装する前の Issue は grill-with-docs スキルでユーザーと詰める。
+
+- 詰め終わったら、決めたことを Issue の本文（.github/ISSUE_TEMPLATE/task.md の形）に反映する。書き換える前に、変える箇所をユーザーに見せる。test-writer は Issue の本文を読んでテストを書くので、ケースと期待値がはっきりするように書く。
+- ADR・CONTEXT.md・TODO.md の変更はコミットせずに残す。implement-issue がブランチを切ったあと、実装より先にコミットし、実装の PR に入れる。ドキュメントだけの PR は出さない（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
 
 ## Issue の実装
 
-Issue を実装するときは implement-issue スキルを使う。テストは実装より先に、test-writer エージェント（`.claude/agents/test-writer.md`）が別の worktree で書く。理由と手順はスキルに書いてある。
-
-implement-issue と address-review-comment は、環境変数 `LOCAL_TODO_AUTO=1` があるとき（`make auto` から呼ばれたとき）を自動実行、それ以外を対話とする。自動実行のときは、ユーザーに聞く場面で聞かずに止まる。Issue や PR の中身の問題なら、理由をコメントして `needs-human` ラベルを付ける。手元の状態の問題なら、何もせずに中断する。
+Issue を実装するときは implement-issue スキルを使う。ブランチを切るところから、PR を出し、`make review` でレビューさせ、レビューコメントに対応するところまでを1回の依頼で進める。マージは人がする。テストは実装より先に、test-writer エージェント（`.claude/agents/test-writer.md`）が別の worktree で書く。理由と手順はスキルに書いてある。
 
 ## コードの検査
 
@@ -41,23 +42,8 @@ Swift のファイルを編集したら、PR を出す前に `make check` を実
 
 PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md`）が、コードを書いたセッションとは別のセッションで行う（理由は docs/adr/0003-code-review-with-claude-code.md）。
 
-- PR を出したら、`make review PR=<PR の URL>` の実行をユーザーに案内する。自分では実行しない。
+- PR を出したら、PR を出したセッションが `make review PR=<PR の URL>` を1回だけ呼ぶ。implement-issue では手順 9 で呼ぶ。implement-issue を使わずに PR を出したとき（ドキュメントやスキルだけの変更を手で進めたときなど）も同じにする。PR 全体のレビューはやり直さない。もう一度呼んでよいのは、失敗してレビューが投稿されなかったときだけ（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
 - レビューコメントへの対応は、1件ずつ address-review-comment スキルで行う。修正の確認は `make re-review COMMENT=<コメントの URL>`、push したあとの返信と resolve は `make resolve COMMENT=<コメントの URL>` で行う。
-- 自動実行のときは、`make review` の案内を出さない。`make review` は `make auto` が呼ぶ（理由は docs/adr/0005-auto-run.md）。address-review-comment は、PR の未解決のコメントをすべて1件ずつ回し、決められないコメントは返信して resolve せずに残す。
-
-## 自動実行（make auto）
-
-`make auto` は、`ready` の Issue を1件ずつ、実装 → PR → `make review` → レビュー対応まで進め、`auto-merge` の Issue はマージまで進める（理由は docs/adr/0005-auto-run.md）。`make auto LIMIT=<数>` で、手をつける Issue の数の上限を決める。
-
-組織の設定で `make` や `git push` に確認が要るので、完全に人の手は離さない。`make auto` は手順ごとに対話の `claude` を開く。人はその場で確認に答え、スキルが「終わりました」と言ったら `/exit` で閉じる。スキルは設計の判断をその場で聞かず、決められなければ `needs-human` で止まる。
-
-ラベルの意味：
-
-- `ready`（Issue）：詰め終わった。実装してよい。grill-issues が付ける
-- `auto-merge`（Issue）：レビューの指摘にすべて対応したら、自動でマージしてよい。画面にかかわる Issue には付けない。grill-issues が付ける
-- `in-progress`（Issue）：`make auto` が処理中。`make auto` が付け外しする。残っていれば、前の実行が途中で落ちている
-- `ready-to-merge`（PR）：レビューの指摘にすべて対応した。人がマージするだけ
-- `needs-human`（Issue か PR）：自動では決められないことがある。理由はコメントに書いてある
 
 ## 用語
 
