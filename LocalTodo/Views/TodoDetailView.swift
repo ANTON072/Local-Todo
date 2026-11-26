@@ -49,6 +49,12 @@ private struct TodoForm: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // 一覧で別の Todo を選んだとき、詳細ペインを隠したときも、フォーカスが外れたとみなして確定する
         .onDisappear { commitTitle() }
+        // ⌘Q で終了するときは onDisappear もフォーカスの変化も確実には起きない。
+        // App 側の終了時の保存（saveNow）と通知を受ける順が決まっていないので、確定したあと自分でも書き切る
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            commitTitle()
+            store.saveNow()
+        }
     }
 
     private func field<Content: View>(
