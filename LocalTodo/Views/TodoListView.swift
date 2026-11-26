@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TodoListView: View {
     let store: TodoStore
+    let undoRouter: UndoRouter
     let kind: TodoListKind
 
     @Binding var selection: Todo.ID?
@@ -25,10 +26,22 @@ struct TodoListView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(card(isSelected: todo.id == selection))
                 .background(SelectionHighlightRemover())
+                .contextMenu {
+                    // 右クリックした行だけを削除する（選択は変えない）
+                    if kind == .inbox {
+                        Button("削除", role: .destructive) { store.delete(id: todo.id) }
+                    }
+                }
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .background(Self.listBackground)
+            // 入力欄にフォーカスがあるときは、入力欄の標準の ⌘⌫（行頭まで消す）のままにするため、一覧のキー入力で受ける
+            .onKeyPress(.delete, phases: .down) { press in
+                guard press.modifiers.contains(.command), kind == .inbox, let selection else { return .ignored }
+                store.delete(id: selection)
+                return .handled
+            }
         }
         .navigationTitle(kind.title)
         .onChange(of: kind) {
@@ -41,6 +54,9 @@ struct TodoListView: View {
         .onAppear {
             isInputFocused = kind.showsNewTodoField
         }
+        // 新規入力欄が空でフォーカスされているあいだ、⌘Z は TodoStore の取り消しに渡す（UndoRouter）
+        .onChange(of: isInputFocused) { updateRouter() }
+        .onChange(of: inputText) { updateRouter() }
     }
 
     /// 行を1件ずつ浮かせるカード。上下にすき間を空けて、隣の行と区切る。
@@ -78,6 +94,10 @@ struct TodoListView: View {
             nsColor: NSColor(name: nil) { appearance in
                 appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
             })
+    }
+
+    private func updateRouter() {
+        undoRouter.isNewTodoFieldEmptyAndFocused = isInputFocused && inputText.isEmpty
     }
 
     private var newTodoField: some View {

@@ -47,6 +47,10 @@ private struct TodoForm: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // 取り消し・やり直しでタイトルが変わったとき、打っていなければ欄の表示も合わせる
+        .onChange(of: todo.title) {
+            if !isTitleFocused { titleDraft = todo.title }
+        }
         // 一覧で別の Todo を選んだとき、詳細ペインを隠したときも、フォーカスが外れたとみなして確定する
         .onDisappear { commitTitle() }
         // ⌘Q で終了するときは onDisappear もフォーカスの変化も確実には起きない。
@@ -127,7 +131,8 @@ private struct TodoForm: View {
             set: { newValue in
                 var updated = todo
                 updated.descriptionText = newValue
-                store.update(updated)
+                // 打鍵は入力欄の標準の取り消しに任せ、取り消しの履歴には載せない
+                store.update(updated, registersUndo: false)
             }
         )
     }

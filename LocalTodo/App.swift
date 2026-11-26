@@ -4,6 +4,7 @@ import SwiftUI
 struct LocalTodoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store: TodoStore
+    @State private var undoRouter = UndoRouter()
     @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
 
     init() {
@@ -28,9 +29,22 @@ struct LocalTodoApp: App {
     var body: some Scene {
         // WindowGroup ではなく Window にして、ウィンドウを1つに限る（「新規ウィンドウ」も出ない）
         Window("LocalTodo", id: "main") {
-            ContentView(store: store)
+            ContentView(store: store, undoRouter: undoRouter)
         }
         .commands {
+            // 入力欄にフォーカスがあるあいだは入力欄の取り消しに任せ、それ以外は TodoStore の取り消しにつなぐ
+            CommandGroup(replacing: .undoRedo) {
+                Button(undoTitle) {
+                    if undoRouter.routesToStore { store.undo() } else { undoRouter.sendToTextField(undo: true) }
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(!canUndo)
+                Button(redoTitle) {
+                    if undoRouter.routesToStore { store.redo() } else { undoRouter.sendToTextField(undo: false) }
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(!canRedo)
+            }
             CommandGroup(after: .sidebar) {
                 Button(showsDetailPane ? "詳細ペインを隠す" : "詳細ペインを表示") {
                     showsDetailPane.toggle()
@@ -38,6 +52,32 @@ struct LocalTodoApp: App {
                 .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
+    }
+}
+
+extension LocalTodoApp {
+    // 保留中のものは、取り消し・やり直しの前に確定されて取り消せるので、履歴が空でも取り消せる
+    private var canUndo: Bool {
+        undoRouter.routesToStore
+            ? store.canUndo || !store.pendingToggles.isEmpty : undoRouter.textCanUndo
+    }
+
+    // 保留中にやり直すと、先に確定した完了が新しい操作になり、やり直しの履歴が消えるので、やり直せない
+    private var canRedo: Bool {
+        undoRouter.routesToStore ? store.canRedo && store.pendingToggles.isEmpty : undoRouter.textCanRedo
+    }
+
+    /// 保留中は、取り消すと先に確定されるので、その名前を出す（履歴の先頭の操作ではない）。
+    private var undoTitle: String {
+        guard undoRouter.routesToStore else { return "取り消す" }
+        let name = store.pendingToggles.isEmpty ? store.undoActionName : store.pendingActionName
+        return name.isEmpty ? "取り消す" : "\(name)を取り消す"
+    }
+
+    private var redoTitle: String {
+        guard undoRouter.routesToStore, store.canRedo, store.pendingToggles.isEmpty, !store.redoActionName.isEmpty
+        else { return "やり直す" }
+        return "\(store.redoActionName)をやり直す"
     }
 }
 
@@ -55,6 +95,7 @@ enum DetailPane {
 
 private struct ContentView: View {
     let store: TodoStore
+    let undoRouter: UndoRouter
     @State private var listKind = TodoListKind.inbox
     @State private var selection: Todo.ID?
     @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
@@ -64,7 +105,7 @@ private struct ContentView: View {
         NavigationSplitView {
             SidebarView(selection: $listKind)
         } detail: {
-            TodoListView(store: store, kind: listKind, selection: $selection)
+            TodoListView(store: store, undoRouter: undoRouter, kind: listKind, selection: $selection)
                 .inspector(isPresented: $showsDetailPane) {
                     Group {
                         if let selection {
@@ -89,5 +130,9 @@ private struct ContentView: View {
             }
         }
         .frame(minWidth: 800, minHeight: 500)
+        // フォーカスの場所が変わったことを、⌘Z をどこへ渡すかの判断に反映する
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification)) { _ in
+            undoRouter.refresh()
+        }
     }
 }

@@ -30,6 +30,21 @@ final class TodoStore {
         return { item.cancel() }
     }
 
+    /// 取り消せるか・やり直せるかと、その操作の名前（メニューの表示に使う）。
+    /// `UndoManager` は観測できないので、変わるたびにここへ写す。
+    private(set) var canUndo = false
+    private(set) var canRedo = false
+    private(set) var undoActionName = ""
+    private(set) var redoActionName = ""
+
+    /// 取り消しの履歴。入力欄の文字の取り消しとは別に持つ（アプリを閉じると消える）。
+    /// 操作ごとに1つのまとまりにするため、イベントごとの自動のまとめは使わない。
+    @ObservationIgnored let undoManager: UndoManager = {
+        let manager = UndoManager()
+        manager.groupsByEvent = false
+        return manager
+    }()
+
     @ObservationIgnored private let persistence: Persistence
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let scheduleTimer: Scheduler
@@ -89,6 +104,7 @@ final class TodoStore {
         let todo = Todo(title: normalized, createdAt: now())
         todos.append(todo)
         save()
+        recordUndo("追加", [.add(todo, at: todos.count - 1)])
         return todo
     }
 
@@ -105,8 +121,10 @@ final class TodoStore {
         }
         let current = todos[index].title
         guard let normalized = Self.normalizedTitle(text), normalized != current else { return current }
+        let before = todos[index]
         todos[index].title = normalized
         save()
+        recordUndo("タイトルの編集", [.edit(before: before, after: todos[index])])
         return normalized
     }
 
@@ -119,21 +137,28 @@ final class TodoStore {
 
     /// 同じ ID の Todo と置き換える。見つからなければ何もしない。
     /// 完了日時は受け取った値を無視して元の値を保つ（完了・戻すは専用の操作にする。#7）。
-    func update(_ todo: Todo) {
+    /// - Parameter registersUndo: 取り消しの履歴に載せるか。ディスクリプションの打鍵は、
+    ///   入力欄の標準の取り消しに任せるので、false にする。
+    func update(_ todo: Todo, registersUndo: Bool = true) {
         guard let index = todos.firstIndex(where: { $0.id == todo.id }) else { return }
+        let before = todos[index]
         var updated = todo
-        updated.completedAt = todos[index].completedAt
+        updated.completedAt = before.completedAt
         todos[index] = updated
         save()
+        if registersUndo, before != updated {
+            recordUndo("編集", [.edit(before: before, after: updated)])
+        }
     }
 
     /// Inbox かアーカイブかを問わず1件を取り除く。見つからなければ何もしない。
     /// 保留中なら保留から外す（消した Todo に完了日時を書かないため）。
     func delete(id: Todo.ID) {
         guard let index = todos.firstIndex(where: { $0.id == id }) else { return }
-        todos.remove(at: index)
+        let removed = todos.remove(at: index)
         if pendingToggles.removeValue(forKey: id) != nil { restartGraceTimer() }
         save()
+        recordUndo("削除", [.delete(removed, at: index)])
     }
 
     // MARK: - 完了とアーカイブ（保留）
@@ -156,18 +181,44 @@ final class TodoStore {
         return todo.isArchived != (pendingToggles[id] != nil)
     }
 
+    /// 保留中のものを確定したときの取り消しの名前。保留中のものがなければ空文字列。
+    /// 保留中は、取り消すと先に確定されるので、メニューの表示名にこれを使う。
+    var pendingActionName: String {
+        var completes = false
+        var restores = false
+        for id in pendingToggles.keys {
+            guard let todo = todos.first(where: { $0.id == id }) else { continue }
+            if todo.isArchived { restores = true } else { completes = true }
+        }
+        return completes || restores ? Self.completionActionName(completes: completes, restores: restores) : ""
+    }
+
+    private static func completionActionName(completes: Bool, restores: Bool) -> String {
+        completes && restores ? "完了と戻す" : completes ? "完了" : "戻す"
+    }
+
     /// 保留中のものをまとめて確定する。Inbox の Todo にはチェックした時刻を完了日時として入れ、
     /// アーカイブの Todo は完了日時を外して Inbox へ戻す。
     private func commitPending() {
         cancelGraceTimer?()
         cancelGraceTimer = nil
         guard !pendingToggles.isEmpty else { return }
-        for (id, checkedAt) in pendingToggles {
+        var mutations: [Mutation] = []
+        var completes = false
+        var restores = false
+        // チェックした順に並べる（同じ時刻のときの順を決めておく）
+        for (id, checkedAt) in pendingToggles.sorted(by: { $0.value < $1.value }) {
             guard let index = todos.firstIndex(where: { $0.id == id }) else { continue }
-            todos[index].completedAt = todos[index].isArchived ? nil : checkedAt
+            let before = todos[index]
+            if before.isArchived { restores = true } else { completes = true }
+            todos[index].completedAt = before.isArchived ? nil : checkedAt
+            mutations.append(.edit(before: before, after: todos[index]))
         }
         pendingToggles = [:]
         save()
+        if !mutations.isEmpty {
+            recordUndo(Self.completionActionName(completes: completes, restores: restores), mutations)
+        }
     }
 
     /// 猶予を最後の操作から数え直す。保留が空ならタイマーを止める。
@@ -178,6 +229,95 @@ final class TodoStore {
         cancelGraceTimer = scheduleTimer(Self.graceInterval) { [weak self] in
             self?.commitPending()
         }
+    }
+
+    // MARK: - 取り消し
+
+    /// 1つの操作が行った変更。取り消しはこれを逆向きに、やり直しは順向きに当てる。
+    /// 取り消し・やり直しの前に、あとから消えた Todo があっても、残りだけを戻す。
+    private enum Mutation {
+        case add(Todo, at: Int)
+        case delete(Todo, at: Int)
+        /// 変わった項目だけを当てる（あとから別の項目を直していても、その直しを巻き込まない）。
+        case edit(before: Todo, after: Todo)
+    }
+
+    /// 直前の操作を取り消す。保留中のものがあれば、先に確定する（いま押した完了をすぐ取り消せるように）。
+    func undo() {
+        commitPending()
+        guard undoManager.canUndo else { return }
+        undoManager.undo()
+        refreshUndoState()
+    }
+
+    /// 取り消した操作をやり直す。保留中のものがあれば、先に確定する。
+    func redo() {
+        commitPending()
+        guard undoManager.canRedo else { return }
+        undoManager.redo()
+        refreshUndoState()
+    }
+
+    /// 操作を行ったあとに呼び、取り消しの履歴に載せる。
+    private func recordUndo(_ name: String, _ mutations: [Mutation]) {
+        registerStep(mutations, name: name, isForward: true)
+    }
+
+    /// `isForward` が true なら、いま順向きに行ったところで、取り消しを登録する。
+    /// 取り消しの中から呼ばれたときは、UndoManager が自動でやり直しの側に積む。
+    private func registerStep(_ mutations: [Mutation], name: String, isForward: Bool) {
+        let opensGroup = !undoManager.isUndoing && !undoManager.isRedoing
+        if opensGroup { undoManager.beginUndoGrouping() }
+        undoManager.registerUndo(withTarget: self) { store in
+            let applied = store.apply(mutations, forward: !isForward)
+            store.registerStep(applied, name: name, isForward: !isForward)
+        }
+        undoManager.setActionName(name)
+        if opensGroup { undoManager.endUndoGrouping() }
+        refreshUndoState()
+    }
+
+    /// 変更を当てる。Todo を取り除くときは、そのときの Todo（取り消しの履歴に載らない更新を含む）を
+    /// 取っておき、次に登録する取り消し・やり直しに使えるよう、作り直した変更を返す。
+    @discardableResult
+    private func apply(_ mutations: [Mutation], forward: Bool) -> [Mutation] {
+        var result = mutations
+        // 取り消しは、行ったのと逆の順に当てる
+        for position in forward ? Array(mutations.indices) : mutations.indices.reversed() {
+            switch (mutations[position], forward) {
+            case (.add(let todo, let index), true), (.delete(let todo, let index), false):
+                guard !todos.contains(where: { $0.id == todo.id }) else { continue }
+                todos.insert(todo, at: min(index, todos.count))
+            case (.add(let todo, _), false):
+                guard let index = remove(id: todo.id) else { continue }
+                result[position] = .add(index.todo, at: index.position)
+            case (.delete(let todo, _), true):
+                guard let index = remove(id: todo.id) else { continue }
+                result[position] = .delete(index.todo, at: index.position)
+            case (.edit(let before, let after), _):
+                guard let index = todos.firstIndex(where: { $0.id == before.id }) else { continue }
+                let (from, to) = forward ? (before, after) : (after, before)
+                todos[index] = todos[index].applying(to, changedFrom: from)
+                if from.completedAt != to.completedAt { pendingToggles.removeValue(forKey: before.id) }
+            }
+        }
+        restartGraceTimer()
+        save()
+        return result
+    }
+
+    /// 取り除いた Todo と、取り除いた位置。保留中なら保留から外す。なければ nil。
+    private func remove(id: Todo.ID) -> (todo: Todo, position: Int)? {
+        guard let position = todos.firstIndex(where: { $0.id == id }) else { return nil }
+        pendingToggles.removeValue(forKey: id)
+        return (todos.remove(at: position), position)
+    }
+
+    private func refreshUndoState() {
+        canUndo = undoManager.canUndo
+        canRedo = undoManager.canRedo
+        undoActionName = undoManager.undoActionName
+        redoActionName = undoManager.redoActionName
     }
 
     // MARK: - 保存
