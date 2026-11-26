@@ -700,6 +700,34 @@ final class TodoStoreUndoTests: XCTestCase {
         directory.appendingPathComponent("todos.json")
     }
 
+    func testRedoAddKeepsDescriptionTypedAfterAdding() throws {
+        let store = try makeStore([])
+        let added = try XCTUnwrap(store.add(title: "A"))
+        var typed = added
+        typed.descriptionText = "あとから打った説明"
+        store.update(typed, registersUndo: false)
+
+        store.undo()
+        store.redo()
+
+        XCTAssertEqual(store.todos.first?.descriptionText, "あとから打った説明")
+    }
+
+    func testUndoDeleteKeepsEditsMadeBetweenUndoAndRedo() throws {
+        let a = Todo(title: "A", createdAt: try date(2026, 11, 24, 9, 0, 0))
+        let store = try makeStore([a])
+        store.delete(id: a.id)
+        store.undo()
+        var typed = a
+        typed.descriptionText = "戻したあとに打った説明"
+        store.update(typed, registersUndo: false)
+
+        store.redo()
+        store.undo()
+
+        XCTAssertEqual(store.todos.first?.descriptionText, "戻したあとに打った説明")
+    }
+
     private func makeStore(_ todos: [Todo]) throws -> TodoStore {
         try Persistence.encode(todos).write(to: fileURL)
         return TodoStore(
