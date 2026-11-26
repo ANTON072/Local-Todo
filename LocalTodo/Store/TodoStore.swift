@@ -61,13 +61,36 @@ final class TodoStore {
     /// - Returns: 追加した Todo。除いたあとに空なら追加せず nil を返す。
     @discardableResult
     func add(title: String) -> Todo? {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\R+", with: " ", options: .regularExpression)
-        guard !trimmed.isEmpty else { return nil }
-        let todo = Todo(title: trimmed, createdAt: now())
+        guard let normalized = Self.normalizedTitle(title) else { return nil }
+        let todo = Todo(title: normalized, createdAt: now())
         todos.append(todo)
         save()
         return todo
+    }
+
+    /// 詳細ペインのタイトル欄に打たれた文字列を、`add(title:)` と同じ整え方でタイトルにする。
+    /// 整えたあとが空なら確定しない（空のタイトルの Todo は一覧で見えなくなるため）。
+    /// 整えたあとが今のタイトルと同じなら、置き換えも保存もしない
+    /// （フォーカスが外れるたびに呼ばれるので、何も変えていない操作で保存や取り消しの履歴を増やさない）。
+    /// - Returns: 欄に出す文字列。確定したら新しいタイトル、確定しなかったら今のタイトル。
+    ///   ID の Todo がなければ何も変えず、整えた文字列（空なら空文字列）を返す。
+    @discardableResult
+    func commitTitle(id: Todo.ID, text: String) -> String {
+        guard let index = todos.firstIndex(where: { $0.id == id }) else {
+            return Self.normalizedTitle(text) ?? ""
+        }
+        let current = todos[index].title
+        guard let normalized = Self.normalizedTitle(text), normalized != current else { return current }
+        todos[index].title = normalized
+        save()
+        return normalized
+    }
+
+    /// 前後の空白と改行を除き、途中の改行（続いたものは1つにまとめて）を半角スペースにする。空なら nil。
+    private static func normalizedTitle(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\R+", with: " ", options: .regularExpression)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// 同じ ID の Todo と置き換える。見つからなければ何もしない。
