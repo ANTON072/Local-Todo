@@ -666,7 +666,183 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertNotNil(store.lastSaveError)
     }
 
+    // MARK: - 期限日順の並びと見出し
+
+    func testInboxIsSortedByDueDateEarliestFirst() throws {
+        try writeFile([
+            Todo(title: "あさって", dueDate: try day(2026, 11, 27)),
+            Todo(title: "昨日", dueDate: try day(2026, 11, 24)),
+            Todo(title: "今日", dueDate: try day(2026, 11, 25)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["昨日", "今日", "あさって"])
+    }
+
+    func testInboxPutsNoDueDateLast() throws {
+        try writeFile([
+            Todo(title: "期限なし", createdAt: try date(2026, 11, 25, 9, 0, 0)),
+            Todo(title: "遠い期限", dueDate: try day(2030, 1, 1)),
+            Todo(title: "昨日", dueDate: try day(2026, 11, 24)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["昨日", "遠い期限", "期限なし"])
+    }
+
+    func testInboxSortsSameDueDateByCreatedAtNewestFirst() throws {
+        try writeFile([
+            Todo(title: "古い", dueDate: try day(2026, 11, 25), createdAt: try date(2026, 11, 1, 9, 0, 0)),
+            Todo(title: "新しい", dueDate: try day(2026, 11, 25), createdAt: try date(2026, 11, 20, 9, 0, 0)),
+            Todo(title: "中間", dueDate: try day(2026, 11, 25), createdAt: try date(2026, 11, 10, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["新しい", "中間", "古い"])
+    }
+
+    func testInboxSortsNoDueDateByCreatedAtNewestFirst() throws {
+        try writeFile([
+            Todo(title: "古い", createdAt: try date(2026, 11, 1, 9, 0, 0)),
+            Todo(title: "新しい", createdAt: try date(2026, 11, 20, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["新しい", "古い"])
+    }
+
+    func testDueDateOrderBeatsCreatedAt() throws {
+        try writeFile([
+            Todo(title: "期限が遅い・新しい", dueDate: try day(2026, 12, 1), createdAt: try date(2026, 11, 20, 9, 0, 0)),
+            Todo(title: "期限が早い・古い", dueDate: try day(2026, 11, 26), createdAt: try date(2026, 11, 1, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["期限が早い・古い", "期限が遅い・新しい"])
+    }
+
+    func testArchivedTodosOrderIsNotAffectedByDueDate() throws {
+        try writeFile([
+            Todo(title: "先に完了", dueDate: try day(2026, 11, 20), completedAt: try date(2026, 11, 22, 9, 0, 0)),
+            Todo(title: "あとに完了", dueDate: try day(2026, 12, 20), completedAt: try date(2026, 11, 23, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.archivedTodos.map(\.title), ["あとに完了", "先に完了"])
+    }
+
+    func testSectionsAssignHeadingsByDueDate() throws {
+        try writeFile([
+            Todo(title: "昨日", dueDate: try day(2026, 11, 24)),
+            Todo(title: "今日", dueDate: try day(2026, 11, 25)),
+            Todo(title: "明日", dueDate: try day(2026, 11, 26)),
+            Todo(title: "期限なし"),
+        ])
+
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 12, 0, 0))
+
+        XCTAssertEqual(sections.map(\.heading), [.beforeToday, .today, .afterToday, .noDueDate])
+        XCTAssertEqual(sections.map { $0.todos.map(\.title) }, [["昨日"], ["今日"], ["明日"], ["期限なし"]])
+    }
+
+    func testSectionsBoundaryBetweenYesterdayAndToday() throws {
+        try writeFile([
+            Todo(title: "昨日の終わり", dueDate: try day(2026, 11, 24)),
+            Todo(title: "今日", dueDate: try day(2026, 11, 25)),
+        ])
+
+        // 今日の 0:00 ちょうど
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 0, 0, 0))
+
+        XCTAssertEqual(sections.first { $0.heading == .beforeToday }?.todos.map(\.title), ["昨日の終わり"])
+        XCTAssertEqual(sections.first { $0.heading == .today }?.todos.map(\.title), ["今日"])
+    }
+
+    func testSectionsBoundaryBetweenTodayAndTomorrow() throws {
+        try writeFile([
+            Todo(title: "今日", dueDate: try day(2026, 11, 25)),
+            Todo(title: "明日", dueDate: try day(2026, 11, 26)),
+        ])
+
+        // 今日の 23:59:59
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 23, 59, 59))
+
+        XCTAssertEqual(sections.first { $0.heading == .today }?.todos.map(\.title), ["今日"])
+        XCTAssertEqual(sections.first { $0.heading == .afterToday }?.todos.map(\.title), ["明日"])
+    }
+
+    func testSectionsUseGivenNowNotStoreClock() throws {
+        try writeFile([Todo(title: "11/25 が期限", dueDate: try day(2026, 11, 25))])
+        let store = makeTokyoStore()  // ストアの時計は 11/25
+
+        let sections = store.inboxSections(now: try date(2026, 11, 26, 12, 0, 0))
+
+        XCTAssertEqual(sections.map(\.heading), [.beforeToday])
+    }
+
+    func testSectionsOmitHeadingsWithNoTodos() throws {
+        try writeFile([
+            Todo(title: "今日", dueDate: try day(2026, 11, 25)),
+            Todo(title: "期限なし"),
+        ])
+
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 12, 0, 0))
+
+        XCTAssertEqual(sections.map(\.heading), [.today, .noDueDate])
+    }
+
+    func testSectionsAreEmptyWhenInboxIsEmpty() throws {
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 12, 0, 0))
+
+        XCTAssertTrue(sections.isEmpty)
+    }
+
+    func testSectionsAreEmptyWhenOnlyArchivedTodosExist() throws {
+        try writeFile([Todo(title: "完了", dueDate: try day(2026, 11, 20), completedAt: try date(2026, 11, 21, 9, 0, 0))])
+
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 12, 0, 0))
+
+        XCTAssertTrue(sections.isEmpty)
+    }
+
+    func testSectionsKeepSortOrderInsideEachHeading() throws {
+        try writeFile([
+            Todo(title: "明後日", dueDate: try day(2026, 11, 27)),
+            Todo(title: "明日", dueDate: try day(2026, 11, 26)),
+            Todo(title: "一昨日", dueDate: try day(2026, 11, 23)),
+            Todo(title: "昨日", dueDate: try day(2026, 11, 24)),
+        ])
+
+        let sections = makeTokyoStore().inboxSections(now: try date(2026, 11, 25, 12, 0, 0))
+
+        XCTAssertEqual(sections.map { $0.todos.map(\.title) }, [["一昨日", "昨日"], ["明日", "明後日"]])
+    }
+
     // MARK: - ヘルパー
+
+    /// 期限日の見出しのテスト用。「今日」を決めるカレンダーを Asia/Tokyo にしたストア。
+    private func makeTokyoStore() -> TodoStore {
+        let clock = clock!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .gmt
+        return TodoStore(
+            persistence: Persistence(directory: directory, saveDelay: Self.saveDelay),
+            now: { clock.now },
+            calendar: calendar)
+    }
+
+    /// 東京の暦での期限日。
+    private func day(_ year: Int, _ month: Int, _ day: Int) throws -> CalendarDay {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Tokyo") ?? .gmt
+        return CalendarDay(try date(year, month, day, 12, 0, 0), calendar: calendar)
+    }
 
     /// テストから進められる「今の時刻」。
     private final class TestClock {

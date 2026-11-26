@@ -9,6 +9,8 @@ struct TodoListView: View {
 
     @State private var inputText = ""
     @FocusState private var isInputFocused: Bool
+    /// 畳んでいる見出し。`DueHeading` の文字列をカンマでつないで保存し、次の起動でも保つ。
+    @AppStorage("collapsedDueHeadings") private var collapsedRaw = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,21 +18,19 @@ struct TodoListView: View {
                 newTodoField
                     .padding(12)
             }
-            List(kind.todos(in: store), selection: $selection) { todo in
-                TodoRowView(
-                    todo: todo, isChecked: store.isShownCompleted(id: todo.id),
-                    onToggle: { store.toggleCompletion(id: todo.id) }
-                )
-                .padding(.horizontal, 6)
-                .padding(.vertical, 8)
-                .listRowSeparator(.hidden)
-                .listRowBackground(card(isSelected: todo.id == selection))
-                .background(SelectionHighlightRemover())
-                .contextMenu {
-                    // 右クリックした行だけを削除する（選択は変えない）
-                    if kind == .inbox {
-                        Button("削除", role: .destructive) { store.delete(id: todo.id) }
+            List(selection: $selection) {
+                if kind == .inbox {
+                    ForEach(store.inboxSections(now: .now)) { section in
+                        Section {
+                            if !collapsedHeadings.contains(section.heading) {
+                                ForEach(section.todos) { todo in row(todo) }
+                            }
+                        } header: {
+                            sectionHeader(section)
+                        }
                     }
+                } else {
+                    ForEach(kind.todos(in: store)) { todo in row(todo) }
                 }
             }
             .listStyle(.inset)
@@ -51,6 +51,16 @@ struct TodoListView: View {
         .onChange(of: kind.todos(in: store).map(\.id)) { _, ids in
             if let selection, !ids.contains(selection) { self.selection = nil }
         }
+        // 操作の結果で Todo が畳んだ見出しに入った（追加・期限日の変更・取り消し・やり直しなど）ときは、
+        // その見出しを開いて、行が隠れないようにする。畳むのはユーザー自身の操作のときだけ。
+        .onChange(of: headingSnapshot) { old, new in
+            guard old.isInbox, new.isInbox else { return }
+            var opened = collapsedHeadings
+            for (id, heading) in new.headings where old.headings[id] != heading {
+                opened.remove(heading)
+            }
+            collapsedHeadings = opened
+        }
         .onAppear {
             isInputFocused = kind.showsNewTodoField
         }
@@ -59,10 +69,97 @@ struct TodoListView: View {
         .onChange(of: inputText) { updateRouter() }
     }
 
+    private func row(_ todo: Todo) -> some View {
+        let isChecked = store.isShownCompleted(id: todo.id)
+        let emphasis = dueEmphasis(of: todo, isChecked: isChecked)
+        return TodoRowView(
+            todo: todo, isChecked: isChecked, dueEmphasis: emphasis,
+            onToggle: { store.toggleCompletion(id: todo.id) }
+        )
+        .padding(.horizontal, 6)
+        .padding(.vertical, 8)
+        .listRowSeparator(.hidden)
+        .listRowBackground(card(isSelected: todo.id == selection, showsPastDueBar: emphasis == .pastDue))
+        .background(SelectionHighlightRemover())
+        .contextMenu {
+            // 右クリックした行だけを削除する（選択は変えない）
+            if kind == .inbox {
+                Button("削除", role: .destructive) { store.delete(id: todo.id) }
+            }
+        }
+    }
+
+    /// 期限の強調は Inbox の行だけ。完了にした行（保留中を含む）には付けない。
+    private func dueEmphasis(of todo: Todo, isChecked: Bool) -> TodoRowView.DueEmphasis {
+        guard kind == .inbox, !isChecked else { return .none }
+        return TodoRowView.DueEmphasis(heading: todo.dueHeading(now: .now, calendar: store.calendar))
+    }
+
+    /// 見出し。左の矢印と見出しをクリックすると、畳む・開くを切り替える。横に、いま出ている行の数を出す。
+    private func sectionHeader(_ section: DueSection) -> some View {
+        let isCollapsed = collapsedHeadings.contains(section.heading)
+        return Button {
+            toggleCollapsed(section)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 12)
+                Text(section.heading.label)
+                    .font(.subheadline.weight(.semibold))
+                Text("\(section.todos.count)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(section.heading.label)、\(section.todos.count)件、\(isCollapsed ? "畳んでいる" : "開いている")")
+    }
+
+    /// 畳むとき、その見出しの中に選択中の Todo があれば選択を外す（隠れた行を詳細ペインで編集させないため）。
+    private func toggleCollapsed(_ section: DueSection) {
+        var collapsed = collapsedHeadings
+        if collapsed.contains(section.heading) {
+            collapsed.remove(section.heading)
+        } else {
+            collapsed.insert(section.heading)
+            if let selection, section.todos.contains(where: { $0.id == selection }) {
+                self.selection = nil
+            }
+        }
+        collapsedHeadings = collapsed
+    }
+
+    private var collapsedHeadings: Set<DueHeading> {
+        get { Set(collapsedRaw.split(separator: ",").compactMap { DueHeading(rawValue: String($0)) }) }
+        nonmutating set {
+            collapsedRaw = DueHeading.allCases.filter(newValue.contains).map(\.rawValue).joined(separator: ",")
+        }
+    }
+
+    /// どの Todo がどの見出しにいるか。見出しの移り変わりを見つけるために使う。
+    private struct HeadingSnapshot: Equatable {
+        let isInbox: Bool
+        let headings: [Todo.ID: DueHeading]
+    }
+
+    private var headingSnapshot: HeadingSnapshot {
+        guard kind == .inbox else { return HeadingSnapshot(isInbox: false, headings: [:]) }
+        var headings: [Todo.ID: DueHeading] = [:]
+        for section in store.inboxSections(now: .now) {
+            for todo in section.todos { headings[todo.id] = section.heading }
+        }
+        return HeadingSnapshot(isInbox: true, headings: headings)
+    }
+
     /// 行を1件ずつ浮かせるカード。上下にすき間を空けて、隣の行と区切る。
     /// 選んだ行は、カードにアクセントカラーを薄く重ね、縁を細く引く。塗りつぶすと色が強すぎるため
     /// （macOS の選択の背景は SelectionHighlightRemover で消している）。
-    private func card(isSelected: Bool) -> some View {
+    /// 期限切れの行は、左端に赤い細いバーを付ける。
+    private func card(isSelected: Bool, showsPastDueBar: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8)
         return
             shape
@@ -73,6 +170,13 @@ struct TodoListView: View {
                     shape.strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1)
                 }
             }
+            .overlay(alignment: .leading) {
+                if showsPastDueBar {
+                    Rectangle().fill(Color.red).frame(width: 3)
+                }
+            }
+            // バーがカードの丸い角からはみ出さないよう、重ねたものまとめてカードの形で切る
+            .clipShape(shape)
             .shadow(color: .black.opacity(0.08), radius: 1.5, y: 1)
             .padding(.vertical, 3)
             .padding(.horizontal, 10)

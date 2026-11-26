@@ -231,7 +231,8 @@ extension CalendarDay {
 }
 
 /// 期限日順の一覧の見出し。
-enum DueHeading: CaseIterable {
+/// 文字列の値は、見出しの開閉を `@AppStorage` に保存するときに使う。変えると保存した開閉が外れる。
+enum DueHeading: String, CaseIterable {
     case beforeToday
     case today
     case afterToday
