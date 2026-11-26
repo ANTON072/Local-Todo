@@ -62,17 +62,21 @@ extension LocalTodoApp {
             ? store.canUndo || !store.pendingToggles.isEmpty : undoRouter.textCanUndo
     }
 
+    // 保留中にやり直すと、先に確定した完了が新しい操作になり、やり直しの履歴が消えるので、やり直せない
     private var canRedo: Bool {
-        undoRouter.routesToStore ? store.canRedo : undoRouter.textCanRedo
+        undoRouter.routesToStore ? store.canRedo && store.pendingToggles.isEmpty : undoRouter.textCanRedo
     }
 
+    /// 保留中は、取り消すと先に確定されるので、その名前を出す（履歴の先頭の操作ではない）。
     private var undoTitle: String {
-        guard undoRouter.routesToStore, store.canUndo, !store.undoActionName.isEmpty else { return "取り消す" }
-        return "\(store.undoActionName)を取り消す"
+        guard undoRouter.routesToStore else { return "取り消す" }
+        let name = store.pendingToggles.isEmpty ? store.undoActionName : store.pendingActionName
+        return name.isEmpty ? "取り消す" : "\(name)を取り消す"
     }
 
     private var redoTitle: String {
-        guard undoRouter.routesToStore, store.canRedo, !store.redoActionName.isEmpty else { return "やり直す" }
+        guard undoRouter.routesToStore, store.canRedo, store.pendingToggles.isEmpty, !store.redoActionName.isEmpty
+        else { return "やり直す" }
         return "\(store.redoActionName)をやり直す"
     }
 }

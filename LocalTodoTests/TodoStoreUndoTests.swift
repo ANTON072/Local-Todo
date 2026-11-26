@@ -728,6 +728,28 @@ final class TodoStoreUndoTests: XCTestCase {
         XCTAssertEqual(store.todos.first?.descriptionText, "戻したあとに打った説明")
     }
 
+    func testPendingActionNameIsEmptyWithoutPending() throws {
+        let store = try makeStore([Todo(title: "A")])
+
+        XCTAssertEqual(store.pendingActionName, "")
+    }
+
+    func testPendingActionNameNamesWhatCommittingWouldDo() throws {
+        let inbox = Todo(title: "A")
+        let archived = Todo(title: "B", completedAt: try date(2026, 11, 25, 10, 0, 0))
+        let store = try makeStore([inbox, archived])
+
+        store.toggleCompletion(id: inbox.id)
+        XCTAssertEqual(store.pendingActionName, "完了")
+
+        store.toggleCompletion(id: inbox.id)
+        store.toggleCompletion(id: archived.id)
+        XCTAssertEqual(store.pendingActionName, "戻す")
+
+        store.toggleCompletion(id: inbox.id)
+        XCTAssertEqual(store.pendingActionName, "完了と戻す")
+    }
+
     private func makeStore(_ todos: [Todo]) throws -> TodoStore {
         try Persistence.encode(todos).write(to: fileURL)
         return TodoStore(

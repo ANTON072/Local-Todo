@@ -181,6 +181,22 @@ final class TodoStore {
         return todo.isArchived != (pendingToggles[id] != nil)
     }
 
+    /// 保留中のものを確定したときの取り消しの名前。保留中のものがなければ空文字列。
+    /// 保留中は、取り消すと先に確定されるので、メニューの表示名にこれを使う。
+    var pendingActionName: String {
+        var completes = false
+        var restores = false
+        for id in pendingToggles.keys {
+            guard let todo = todos.first(where: { $0.id == id }) else { continue }
+            if todo.isArchived { restores = true } else { completes = true }
+        }
+        return completes || restores ? Self.completionActionName(completes: completes, restores: restores) : ""
+    }
+
+    private static func completionActionName(completes: Bool, restores: Bool) -> String {
+        completes && restores ? "完了と戻す" : completes ? "完了" : "戻す"
+    }
+
     /// 保留中のものをまとめて確定する。Inbox の Todo にはチェックした時刻を完了日時として入れ、
     /// アーカイブの Todo は完了日時を外して Inbox へ戻す。
     private func commitPending() {
@@ -201,7 +217,7 @@ final class TodoStore {
         pendingToggles = [:]
         save()
         if !mutations.isEmpty {
-            recordUndo(completes && restores ? "完了と戻す" : completes ? "完了" : "戻す", mutations)
+            recordUndo(Self.completionActionName(completes: completes, restores: restores), mutations)
         }
     }
 
