@@ -1,9 +1,11 @@
+# XcodeGen の設定。LocalTodo.xcodeproj はここから生成する。
+# .xcodeproj を手で書かず、設定をテキストで管理するため。
 name: LocalTodo
 
 options:
   bundleIdPrefix: com.anton072
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "14.0" # @Observable などの新しい SwiftUI の API を使うため
   createIntermediateGroups: true
 
 settings:
