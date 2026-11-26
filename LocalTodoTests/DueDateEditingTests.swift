@@ -671,6 +671,26 @@ final class DueDateEditingTests: XCTestCase {
         XCTAssertEqual(store.undoActionName, "期限日の編集")
     }
 
+    func testUndoBeforeCommitDoesNotRevertCompletionCommittedMeanwhile() throws {
+        // 時刻を変えたまま完了にし、確定前に取り消すと、期限日だけが戻り、完了は残る（レビューの指摘）
+        let a = Todo(title: "A", dueDate: .dateTime(try date(2026, 11, 24, 9, 0)))
+        let store = try makeStore([a])
+        store.updateDueTime(id: a.id, hour: 11, minute: 0)
+        store.toggleCompletion(id: a.id)
+
+        store.undo()
+
+        let undone = try XCTUnwrap(store.todos.first)
+        XCTAssertEqual(undone.dueDate, .dateTime(try date(2026, 11, 24, 9, 0)))
+        XCTAssertNotNil(undone.completedAt)
+        XCTAssertEqual(store.undoActionName, "完了")
+
+        store.undo()
+
+        XCTAssertNil(store.todos.first?.completedAt)
+        XCTAssertEqual(dueDate(store, a.id), .dateTime(try date(2026, 11, 24, 9, 0)))
+    }
+
     func testUndoAfterCommitThenUndoAgainUndoesEarlierOperation() throws {
         let a = Todo(title: "A", dueDate: .date(try day(2026, 11, 24)))
         let store = try makeStore([a])

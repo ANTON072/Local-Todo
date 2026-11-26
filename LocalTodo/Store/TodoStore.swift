@@ -225,7 +225,11 @@ final class TodoStore {
         guard let start = dueTimeEditStart else { return }
         dueTimeEditStart = nil
         guard let after = todos.first(where: { $0.id == start.id }), after.dueDate != start.dueDate else { return }
-        recordUndo(Self.dueDateActionName, [.edit(before: start, after: after)])
+        // 変更前は今の Todo の期限日だけを戻したものにする。変え始めたときの Todo 全体を使うと、
+        // そのあいだに確定した完了などまで、この1件の取り消しで一緒に戻ってしまう
+        var before = after
+        before.dueDate = start.dueDate
+        recordUndo(Self.dueDateActionName, [.edit(before: before, after: after)])
     }
 
     /// Inbox かアーカイブかを問わず1件を取り除く。見つからなければ何もしない。
