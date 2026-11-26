@@ -20,7 +20,7 @@
 実装する前の Issue は grill-with-docs スキルでユーザーと詰める。
 
 - 詰め終わったら、決めたことを Issue の本文（.github/ISSUE_TEMPLATE/task.md の形）に反映する。書き換える前に、変える箇所をユーザーに見せる。test-writer は Issue の本文を読んでテストを書くので、ケースと期待値がはっきりするように書く。
-- ADR・CONTEXT.md・TODO.md の変更はコミットせずに残す。implement-issue がブランチを切ったあと、実装より先にコミットし、実装の PR に入れる。ドキュメントだけの PR は出さない（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
+- ADR・CONTEXT.md・TODO.md の変更はコミットせずに残す。implement-issue がブランチを切ったあと、実装より先にコミットし、実装の PR に入れる（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
 
 ## Issue の実装
 

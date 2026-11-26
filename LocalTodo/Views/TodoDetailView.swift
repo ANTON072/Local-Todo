@@ -43,6 +43,7 @@ private struct TodoForm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             field("タイトル") { titleField }
+            field("期限日") { DueDateField(store: store, todo: todo) }
             field("ディスクリプション", fillsHeight: true) { descriptionField }
         }
         .padding(16)
@@ -145,5 +146,47 @@ private struct TodoForm: View {
     /// 日本語入力で変換中（未確定の文字がある）か。変換中の Enter・Esc は、入力欄に任せる。
     private var isComposingText: Bool {
         (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
+    }
+}
+
+/// 期限日の欄。期限なしなら「期限日を追加」だけ、期限があれば日付ボタンと × を並べる。
+/// 「今日」ボタンは置かない。カレンダーは今日を選んだ状態で開くので、今日はそのままクリックすればよい。
+private struct DueDateField: View {
+    let store: TodoStore
+    let todo: Todo
+
+    @State private var isCalendarShown = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let dueDate = todo.dueDate {
+                Button(dueDate.label) { isCalendarShown = true }
+                    .popover(isPresented: $isCalendarShown, arrowEdge: .bottom) { calendarPopover }
+                Spacer(minLength: 0)
+                Button {
+                    store.removeDueDate(id: todo.id)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("期限日を外す")
+                .accessibilityLabel("期限日を外す")
+            } else {
+                Button("期限日を追加") { isCalendarShown = true }
+                    .popover(isPresented: $isCalendarShown, arrowEdge: .bottom) { calendarPopover }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// 開くたびに作り直されるので、選ばれた日は、期限があればその日、なければ今日になる。
+    private var calendarPopover: some View {
+        let today = CalendarDay(.now, calendar: store.calendar)
+        return MonthCalendar(selected: todo.dueDate ?? today, today: today, calendar: store.calendar) { day in
+            store.setDueDay(id: todo.id, day: day)
+            isCalendarShown = false
+        }
+        .padding(12)
     }
 }

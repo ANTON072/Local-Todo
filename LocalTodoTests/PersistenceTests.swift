@@ -25,12 +25,11 @@ final class PersistenceTests: XCTestCase {
                 titleURL: URL(string: "https://example.com/plan"),
                 links: [TodoLink(url: try XCTUnwrap(URL(string: "https://example.com/a")), displayName: "資料 A")],
                 descriptionText: "1行目\n2行目",
-                dueDate: .date(CalendarDay(try date(2026, 11, 25, calendar: tokyo), calendar: tokyo)),
+                dueDate: CalendarDay(try date(2026, 11, 25, calendar: tokyo), calendar: tokyo),
                 tags: ["仕事", "急ぎ"],
                 createdAt: Date(timeIntervalSince1970: 1_764_000_000.123),
                 completedAt: Date(timeIntervalSince1970: 1_764_100_000.456)
             ),
-            Todo(title: "見積確認", dueDate: .dateTime(Date(timeIntervalSince1970: 1_764_050_000))),
             Todo(title: "本を読む"),
         ]
 
@@ -51,7 +50,7 @@ final class PersistenceTests: XCTestCase {
         let tokyo = makeTokyoCalendar()
         let todo = Todo(
             title: "企画書を送る",
-            dueDate: .date(CalendarDay(try date(2026, 11, 25, calendar: tokyo), calendar: tokyo)))
+            dueDate: CalendarDay(try date(2026, 11, 25, calendar: tokyo), calendar: tokyo))
         makePersistence().saveNow([todo])
 
         let json = try XCTUnwrap(
@@ -61,12 +60,47 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(first["dueDate"] as? [String: String], ["date": "2026-11-25"])
     }
 
-    func testDateTimeIsWrittenAsISO8601WithMilliseconds() throws {
-        let todo = Todo(title: "見積確認", dueDate: .dateTime(Date(timeIntervalSince1970: 1_764_050_000.5)))
+    func testDateIsWrittenAsISO8601WithMilliseconds() throws {
+        let todo = Todo(title: "見積確認", createdAt: Date(timeIntervalSince1970: 1_764_050_000.5))
         makePersistence().saveNow([todo])
 
         let text = try String(contentsOf: fileURL, encoding: .utf8)
-        XCTAssertTrue(text.contains(#""dateTime" : "2025-11-25T05:53:20.500Z""#), text)
+        XCTAssertTrue(text.contains(#""createdAt" : "2025-11-25T05:53:20.500Z""#), text)
+    }
+
+    func testDueDateIsWrittenWithoutDateTimeKey() throws {
+        let tokyo = makeTokyoCalendar()
+        let json = fileJSON(dueDate: #"{"date": "2026-11-24"}"#)
+        let todos = try Persistence.decode(json, calendar: tokyo)
+        makePersistence().saveNow(todos)
+
+        let saved = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any])
+        let first = try XCTUnwrap((saved["todos"] as? [[String: Any]])?.first)
+        XCTAssertEqual(first["dueDate"] as? [String: String], ["date": "2026-11-24"])
+    }
+
+    // MARK: - 時刻を持っていたころの期限日
+
+    func testOldDateTimeIsReadAsDayInGivenTimeZone() throws {
+        // UTC の 11/24 15:30 は、東京では 11/25 0:30。東京の暦の日付にする
+        let tokyo = makeTokyoCalendar()
+        let json = fileJSON(dueDate: #"{"dateTime": "2026-11-24T15:30:00.000Z"}"#)
+
+        let due = try XCTUnwrap(try Persistence.decode(json, calendar: tokyo).first?.dueDate)
+
+        XCTAssertEqual([due.year, due.month, due.day], [2026, 11, 25])
+    }
+
+    func testOldDateTimeIsWrittenBackAsDate() throws {
+        let tokyo = makeTokyoCalendar()
+        let json = fileJSON(dueDate: #"{"dateTime": "2026-11-24T15:30:00.000Z"}"#)
+        makePersistence().saveNow(try Persistence.decode(json, calendar: tokyo))
+
+        let saved = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any])
+        let first = try XCTUnwrap((saved["todos"] as? [[String: Any]])?.first)
+        XCTAssertEqual(first["dueDate"] as? [String: String], ["date": "2026-11-25"])
     }
 
     // MARK: - 初回起動
@@ -164,10 +198,7 @@ final class PersistenceTests: XCTestCase {
         // 日付として正しいかは検査しない。手で書き換えた1件のためにファイル全体を読めなくしないため
         let todos = try Persistence.decode(fileJSON(dueDate: #"{"date": "2026-02-30"}"#))
         let due = try XCTUnwrap(todos.first?.dueDate)
-        guard case .date(let day) = due else {
-            return XCTFail("日付だけの期限日として読めていない: \(due)")
-        }
-        XCTAssertEqual([day.year, day.month, day.day], [2026, 2, 30])
+        XCTAssertEqual([due.year, due.month, due.day], [2026, 2, 30])
     }
 
     func testMalformedCalendarDayIsDecodingError() {
@@ -291,16 +322,7 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.tags, original.tags, file: file, line: line)
         assertSameDate(loaded.createdAt, original.createdAt, file: file, line: line)
         assertSameDate(loaded.completedAt, original.completedAt, file: file, line: line)
-        switch (loaded.dueDate, original.dueDate) {
-        case (nil, nil):
-            break
-        case (.date(let loadedDay), .date(let originalDay)):
-            XCTAssertEqual(loadedDay, originalDay, file: file, line: line)
-        case (.dateTime(let loadedDate), .dateTime(let originalDate)):
-            assertSameDate(loadedDate, originalDate, file: file, line: line)
-        default:
-            XCTFail("期限日の種類が違う: \(String(describing: loaded.dueDate))", file: file, line: line)
-        }
+        XCTAssertEqual(loaded.dueDate, original.dueDate, file: file, line: line)
     }
 
     private func assertSameDate(_ loaded: Date?, _ original: Date?, file: StaticString, line: UInt) {

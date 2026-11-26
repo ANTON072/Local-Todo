@@ -47,6 +47,8 @@ final class TodoStore {
 
     @ObservationIgnored private let persistence: Persistence
     @ObservationIgnored private let now: () -> Date
+    /// 期限日の「今日」を決めるカレンダー（タイムゾーン）。テストで差し替える。
+    @ObservationIgnored let calendar: Calendar
     @ObservationIgnored private let scheduleTimer: Scheduler
     @ObservationIgnored private var cancelGraceTimer: (() -> Void)?
 
@@ -54,14 +56,17 @@ final class TodoStore {
     ///   - persistence: 保存先。テストでは一時フォルダのものを渡す。保存の失敗を受け取るため、
     ///     `onSaveError` をこの TodoStore が差し替える。
     ///   - now: 今の時刻。テストで差し替える。
+    ///   - calendar: 期限日の「今日」を決めるカレンダー。テストで差し替える。
     ///   - scheduleTimer: 保留を確定するまでの猶予を数えるタイマー。テストでは、時間を進めたら動く偽物を渡す。
     init(
         persistence: Persistence,
         now: @escaping () -> Date = { .now },
+        calendar: Calendar = .current,
         scheduleTimer: @escaping Scheduler = TodoStore.mainQueueScheduler
     ) {
         self.persistence = persistence
         self.now = now
+        self.calendar = calendar
         self.scheduleTimer = scheduleTimer
         let result = persistence.load()
         todos = result.todos
@@ -149,6 +154,30 @@ final class TodoStore {
         if registersUndo, before != updated {
             recordUndo("編集", [.edit(before: before, after: updated)])
         }
+    }
+
+    // MARK: - 期限日
+
+    /// 取り消しのメニューに出す、期限日の変更の名前。
+    static let dueDateActionName = "期限日の編集"
+
+    /// カレンダーで日を選ぶ。1回の操作を1件として取り消しの履歴に載せる。
+    func setDueDay(id: Todo.ID, day: CalendarDay) {
+        setDueDate(id: id, to: day)
+    }
+
+    /// × で期限を外す。
+    func removeDueDate(id: Todo.ID) {
+        setDueDate(id: id, to: nil)
+    }
+
+    /// 変わらなければ（今と同じ日を選んだときなど）何もせず、取り消しの履歴にも載せない。
+    private func setDueDate(id: Todo.ID, to dueDate: CalendarDay?) {
+        guard let index = todos.firstIndex(where: { $0.id == id }), todos[index].dueDate != dueDate else { return }
+        let before = todos[index]
+        todos[index].dueDate = dueDate
+        save()
+        recordUndo(Self.dueDateActionName, [.edit(before: before, after: todos[index])])
     }
 
     /// Inbox かアーカイブかを問わず1件を取り除く。見つからなければ何もしない。

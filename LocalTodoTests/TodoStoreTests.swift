@@ -335,7 +335,7 @@ final class TodoStoreTests: XCTestCase {
         todo.titleURL = URL(string: "https://example.com/plan")
         todo.links = [link]
         todo.descriptionText = "1行目\n2行目"
-        todo.dueDate = .dateTime(try date(2026, 11, 26, 15, 0, 0))
+        todo.dueDate = CalendarDay(try date(2026, 11, 26, 9, 0, 0), calendar: Calendar(identifier: .gregorian))
         todo.tags = ["仕事"]
         store.update(todo)
 

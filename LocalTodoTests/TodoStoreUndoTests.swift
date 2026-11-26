@@ -280,7 +280,7 @@ final class TodoStoreUndoTests: XCTestCase {
         let a = Todo(title: "A")
         let store = try makeStore([a])
         var edited = a
-        edited.dueDate = .dateTime(try date(2026, 12, 1, 9, 0, 0))
+        edited.dueDate = CalendarDay(try date(2026, 12, 1, 9, 0, 0), calendar: Calendar(identifier: .gregorian))
 
         store.update(edited)
         XCTAssertEqual(store.todos.first?.dueDate, edited.dueDate)
@@ -293,7 +293,7 @@ final class TodoStoreUndoTests: XCTestCase {
         let a = Todo(title: "A")
         let store = try makeStore([a])
         var edited = a
-        edited.dueDate = .dateTime(try date(2026, 12, 1, 9, 0, 0))
+        edited.dueDate = CalendarDay(try date(2026, 12, 1, 9, 0, 0), calendar: Calendar(identifier: .gregorian))
 
         store.update(edited)
         store.undo()
