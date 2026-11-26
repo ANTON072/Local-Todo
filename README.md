@@ -53,6 +53,28 @@ Issue 1件を、Claude Code と対話しながら次の順に進める。全自�
 
 マージ前に自分でレビューコメントを付けたときは、「このコメントを対応して <コメントの URL>」と頼む（address-review-comment スキル）。
 
+## スキル
+
+スキルは `.claude/skills/` にある。
+
+開発の流れで呼ぶもの：
+
+| スキル | 呼び方 | 内容 |
+|---|---|---|
+| grill-with-docs | `/grill-with-docs <Issue の URL>` | Issue を1問ずつ質問して詰め、決めたことを ADR・CONTEXT.md に書く |
+| implement-issue | 「この Issue を実装して <URL>」 | ブランチを切るところから、PR を出し、レビューコメントに対応するところまで進める |
+| address-review-comment | 「このコメントを対応して <URL>」 | レビューコメント1件を、修正・再レビュー・push・resolve まで片づける |
+
+開発の流れとは別に、必要なときに呼ぶもの：
+
+| スキル | 内容 |
+|---|---|
+| grill-me | 計画や設計を、質問を重ねて詰める（ドキュメントは書かない） |
+| critical-thinking | 判断を求める文書を、決裁者の目で検査して直す |
+| natural-japanese | 日本語の文書を、自然で読みやすく書く・直す |
+
+grilling と domain-modeling は grill-with-docs の中で呼ばれるもので、直接は呼ばない。テストを書く test-writer とレビューする code-reviewer は、スキルではなくエージェント（`.claude/agents/`）で、implement-issue と `make review` が呼ぶ。
+
 ## 開発で使うコマンド
 
 | コマンド | 内容 |
