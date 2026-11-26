@@ -6,7 +6,8 @@ struct Todo: Codable, Identifiable, Hashable {
     var titleURL: URL?
     var links: [TodoLink]
     var descriptionText: String
-    var dueDate: DueDate?
+    /// 期限日。年月日だけで、時刻は持たない（docs/adr/0008-due-date-without-time.md）。
+    var dueDate: CalendarDay?
     var tags: [String]
     let createdAt: Date
     var completedAt: Date?
@@ -17,7 +18,7 @@ struct Todo: Codable, Identifiable, Hashable {
         titleURL: URL? = nil,
         links: [TodoLink] = [],
         descriptionText: String = "",
-        dueDate: DueDate? = nil,
+        dueDate: CalendarDay? = nil,
         tags: [String] = [],
         createdAt: Date = .now,
         completedAt: Date? = nil
@@ -52,9 +53,9 @@ struct Todo: Codable, Identifiable, Hashable {
         completedAt != nil
     }
 
-    /// 期限なしは期限超過にならない。完了しているかは見ない。
-    func isOverdue(now: Date, calendar: Calendar) -> Bool {
-        dueDate?.isOverdue(now: now, calendar: calendar) ?? false
+    /// 期限切れ（期限日が昨日以前）か。期限なしは期限切れにならない。完了しているかは見ない。
+    func isPastDue(now: Date, calendar: Calendar) -> Bool {
+        dueDate?.isPastDue(now: now, calendar: calendar) ?? false
     }
 
     /// 一覧の行に出す期限日。期限なしなら nil。
@@ -67,6 +68,70 @@ struct Todo: Codable, Identifiable, Hashable {
     }
 }
 
+// 期限日は JSON では {"date": "2026-11-25"} の形にする（ADR-0002 で決めた形を保つ）。
+// 時刻を持っていたころの {"dateTime": "2026-11-25T06:00:00.000Z"} も読み、その日の日付にする。
+// 読み替えに使うタイムゾーンは `JSONDecoder.userInfo[.dueDateCalendar]`、なければこの Mac の設定。
+extension Todo {
+    private enum CodingKeys: String, CodingKey {
+        case id, title, titleURL, links, descriptionText, dueDate, tags, createdAt, completedAt
+    }
+
+    private enum DueDateKeys: String, CodingKey {
+        case date
+        case dateTime
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        titleURL = try container.decodeIfPresent(URL.self, forKey: .titleURL)
+        links = try container.decode([TodoLink].self, forKey: .links)
+        descriptionText = try container.decode(String.self, forKey: .descriptionText)
+        tags = try container.decode([String].self, forKey: .tags)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        completedAt = try container.decodeIfPresent(Date.self, forKey: .completedAt)
+        dueDate = try Self.decodeDueDate(from: container, decoder: decoder)
+    }
+
+    private static func decodeDueDate(
+        from container: KeyedDecodingContainer<CodingKeys>, decoder: Decoder
+    ) throws -> CalendarDay? {
+        guard container.contains(.dueDate), try !container.decodeNil(forKey: .dueDate) else { return nil }
+        let dueDate = try container.nestedContainer(keyedBy: DueDateKeys.self, forKey: .dueDate)
+        guard dueDate.allKeys.count == 1 else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: dueDate.codingPath, debugDescription: "date か dateTime のどちらか1つが必要"))
+        }
+        if let day = try dueDate.decodeIfPresent(CalendarDay.self, forKey: .date) {
+            return day
+        }
+        let calendar = decoder.userInfo[.dueDateCalendar] as? Calendar ?? .current
+        return CalendarDay(try dueDate.decode(Date.self, forKey: .dateTime), calendar: calendar)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encodeIfPresent(titleURL, forKey: .titleURL)
+        try container.encode(links, forKey: .links)
+        try container.encode(descriptionText, forKey: .descriptionText)
+        try container.encode(tags, forKey: .tags)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(completedAt, forKey: .completedAt)
+        if let dueDate {
+            var nested = container.nestedContainer(keyedBy: DueDateKeys.self, forKey: .dueDate)
+            try nested.encode(dueDate, forKey: .date)
+        }
+    }
+}
+
+extension CodingUserInfoKey {
+    /// 古い `{"dateTime": …}` の期限日を、どのタイムゾーンの日付にするか（`Calendar`）。
+    static let dueDateCalendar = CodingUserInfoKey(rawValue: "dueDateCalendar")!
+}
+
 struct TodoLink: Codable, Identifiable, Hashable {
     let id: UUID
     var url: URL
@@ -76,136 +141,6 @@ struct TodoLink: Codable, Identifiable, Hashable {
         self.id = id
         self.url = url
         self.displayName = displayName
-    }
-}
-
-/// 期限日。日付だけの期限は暦の上の1日として持つ（理由は docs/adr/0002-due-date-as-enum.md）。
-enum DueDate: Codable, Hashable {
-    /// 日付だけ。その日が終わったら期限超過になる。
-    case date(CalendarDay)
-    /// 時刻つき。時刻を過ぎたら期限超過になる。
-    case dateTime(Date)
-
-    func isOverdue(now: Date, calendar: Calendar) -> Bool {
-        switch self {
-        case .date(let day):
-            // 翌日 0:00 ちょうどから期限超過
-            CalendarDay(now, calendar: calendar) > day
-        case .dateTime(let date):
-            // 時刻ちょうどはまだ期限内
-            now > date
-        }
-    }
-
-    /// 時刻つきでも見出しは期限日で決める。今日が期限で時刻を過ぎたものは「今日」に残る。
-    func heading(now: Date, calendar: Calendar) -> DueHeading {
-        let today = CalendarDay(now, calendar: calendar)
-        let dueDay = day(calendar: calendar)
-        if dueDay < today {
-            return .beforeToday
-        } else if dueDay == today {
-            return .today
-        } else {
-            return .afterToday
-        }
-    }
-
-    func day(calendar: Calendar) -> CalendarDay {
-        switch self {
-        case .date(let day):
-            day
-        case .dateTime(let date):
-            CalendarDay(date, calendar: calendar)
-        }
-    }
-
-    var hasTime: Bool {
-        if case .dateTime = self { true } else { false }
-    }
-
-    /// 時刻を付けるときに入れる時刻。
-    static let defaultTime = (hour: 9, minute: 0)
-
-    /// カレンダーで `day` を選んだときの期限日。時刻つきなら時・分はそのままにして、日付だけを変える。
-    /// 期限なし（`current` が nil）なら日付だけの期限にする。
-    static func selecting(_ day: CalendarDay, keeping current: DueDate?, calendar: Calendar) -> DueDate {
-        guard case .dateTime(let time) = current else { return .date(day) }
-        let parts = gregorian(calendar).dateComponents([.hour, .minute], from: time)
-        return .dateTime(day.date(hour: parts.hour ?? 0, minute: parts.minute ?? 0, calendar: calendar))
-    }
-
-    /// 時刻を付けた期限日。前に付けていた時刻は覚えず、いつも `defaultTime` にする。時刻つきならそのまま。
-    func withTime(calendar: Calendar) -> DueDate {
-        guard case .date = self else { return self }
-        return changingTime(hour: Self.defaultTime.hour, minute: Self.defaultTime.minute, calendar: calendar)
-    }
-
-    /// 時刻を外した、その日の日付だけの期限日。
-    func withoutTime(calendar: Calendar) -> DueDate {
-        .date(day(calendar: calendar))
-    }
-
-    /// 時刻を `hour`:`minute` に変えた期限日。日付は変えない。日付だけの期限なら時刻つきにする。
-    func changingTime(hour: Int, minute: Int, calendar: Calendar) -> DueDate {
-        .dateTime(day(calendar: calendar).date(hour: hour, minute: minute, calendar: calendar))
-    }
-
-    /// 一覧の行に出す書き方。今年なら年を省く。月・日・時はゼロ埋めしない（`1/5 9:05`）。
-    func rowText(now: Date, calendar: Calendar) -> String {
-        let dueDay = day(calendar: calendar)
-        let thisYear = CalendarDay(now, calendar: calendar).year
-        let dayText = dueDay.year == thisYear ? "\(dueDay.month)/\(dueDay.day)" : dueDay.label
-        return timeLabel(calendar: calendar).map { "\(dayText) \($0)" } ?? dayText
-    }
-
-    /// 詳細ペインの日付ボタンに出す書き方。いつも年を付け、時刻は書かない（`2026/1/5`）。
-    func buttonText(calendar: Calendar) -> String {
-        day(calendar: calendar).label
-    }
-
-    private func timeLabel(calendar: Calendar) -> String? {
-        guard case .dateTime(let date) = self else { return nil }
-        let parts = Self.gregorian(calendar).dateComponents([.hour, .minute], from: date)
-        return String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
-    }
-
-    /// 時・分も、CalendarDay と同じくグレゴリオ暦で、渡されたカレンダーのタイムゾーンで取り出す。
-    private static func gregorian(_ calendar: Calendar) -> Calendar {
-        var gregorian = Calendar(identifier: .gregorian)
-        gregorian.timeZone = calendar.timeZone
-        return gregorian
-    }
-}
-
-// JSON では {"date": "2026-11-25"} か {"dateTime": "2026-11-25T06:00:00.000Z"} の形にする。
-// 自動のエンコードだと {"date": {"_0": {...}}} のように読みにくくなるため。
-extension DueDate {
-    private enum CodingKeys: String, CodingKey {
-        case date
-        case dateTime
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        guard container.allKeys.count == 1 else {
-            throw DecodingError.dataCorrupted(
-                .init(codingPath: container.codingPath, debugDescription: "date か dateTime のどちらか1つが必要"))
-        }
-        if let day = try container.decodeIfPresent(CalendarDay.self, forKey: .date) {
-            self = .date(day)
-        } else {
-            self = .dateTime(try container.decode(Date.self, forKey: .dateTime))
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .date(let day):
-            try container.encode(day, forKey: .date)
-        case .dateTime(let date):
-            try container.encode(date, forKey: .dateTime)
-        }
     }
 }
 
@@ -239,17 +174,39 @@ struct CalendarDay: Codable, Hashable, Comparable {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }
 
-    /// この日の、`calendar` のタイムゾーンでの `hour`:`minute`。
-    func date(hour: Int = 0, minute: Int = 0, calendar: Calendar) -> Date {
+    /// この日の、`calendar` のタイムゾーンでの 0:00。
+    func date(calendar: Calendar) -> Date {
         var gregorian = Calendar(identifier: .gregorian)
         gregorian.timeZone = calendar.timeZone
-        let components = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+        let components = DateComponents(year: year, month: month, day: day)
         return gregorian.date(from: components) ?? .distantPast
     }
 
-    /// `2026/1/5` の形。ゼロ埋めしない。
+    /// `2026/1/5` の形。ゼロ埋めしない。詳細ペインの日付ボタンに使う。
     var label: String {
         "\(year)/\(month)/\(day)"
+    }
+
+    /// 一覧の行に出す期限日の書き方。今年なら年を省く（`1/5`）。
+    func rowText(now: Date, calendar: Calendar) -> String {
+        year == CalendarDay(now, calendar: calendar).year ? "\(month)/\(day)" : label
+    }
+
+    /// 期限日として、期限切れ（昨日以前）か。期限日の翌日 0:00 ちょうどから期限切れになる。
+    func isPastDue(now: Date, calendar: Calendar) -> Bool {
+        self < CalendarDay(now, calendar: calendar)
+    }
+
+    /// 期限日としての見出し。
+    func heading(now: Date, calendar: Calendar) -> DueHeading {
+        let today = CalendarDay(now, calendar: calendar)
+        if self < today {
+            return .beforeToday
+        } else if self == today {
+            return .today
+        } else {
+            return .afterToday
+        }
     }
 }
 

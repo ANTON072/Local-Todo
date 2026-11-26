@@ -5,38 +5,21 @@ import XCTest
 final class TodoTests: XCTestCase {
     private let tokyo = TodoTests.makeCalendar("Asia/Tokyo")
 
-    // MARK: - 期限超過・時刻つき
+    // MARK: - 期限切れ
 
-    func testDateTimeIsNotOverdueOneSecondBeforeDue() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 25, 15, 0, 0))
-        XCTAssertFalse(due.isOverdue(now: try date(2026, 11, 25, 14, 59, 59), calendar: tokyo))
-    }
-
-    func testDateTimeIsNotOverdueAtExactDueTime() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 25, 15, 0, 0))
-        XCTAssertFalse(due.isOverdue(now: try date(2026, 11, 25, 15, 0, 0), calendar: tokyo))
-    }
-
-    func testDateTimeIsOverdueOneSecondAfterDue() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 25, 15, 0, 0))
-        XCTAssertTrue(due.isOverdue(now: try date(2026, 11, 25, 15, 0, 1), calendar: tokyo))
-    }
-
-    // MARK: - 期限超過・日付だけ
-
-    func testDateIsNotOverdueAtEndOfDueDay() throws {
+    func testIsNotPastDueAtEndOfDueDay() throws {
         let due = try dueDay(2026, 11, 25)
-        XCTAssertFalse(due.isOverdue(now: try date(2026, 11, 25, 23, 59, 59), calendar: tokyo))
+        XCTAssertFalse(due.isPastDue(now: try date(2026, 11, 25, 23, 59, 59), calendar: tokyo))
     }
 
-    func testDateIsOverdueAtMidnightOfNextDay() throws {
+    func testIsPastDueAtMidnightOfNextDay() throws {
         let due = try dueDay(2026, 11, 25)
-        XCTAssertTrue(due.isOverdue(now: try date(2026, 11, 26, 0, 0, 0), calendar: tokyo))
+        XCTAssertTrue(due.isPastDue(now: try date(2026, 11, 26, 0, 0, 0), calendar: tokyo))
     }
 
-    func testDateIsOverdueOneSecondAfterMidnightOfNextDay() throws {
+    func testIsPastDueOneSecondAfterMidnightOfNextDay() throws {
         let due = try dueDay(2026, 11, 25)
-        XCTAssertTrue(due.isOverdue(now: try date(2026, 11, 26, 0, 0, 1), calendar: tokyo))
+        XCTAssertTrue(due.isPastDue(now: try date(2026, 11, 26, 0, 0, 1), calendar: tokyo))
     }
 
     // MARK: - 見出し・日付だけ
@@ -48,39 +31,20 @@ final class TodoTests: XCTestCase {
         XCTAssertEqual(try dueDay(2026, 11, 26).heading(now: now, calendar: tokyo), .afterToday)
     }
 
-    // MARK: - 見出し・時刻つき
-
-    func testDateTimeDueTodayStaysTodayAfterItsTimePasses() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 25, 9, 0, 0))
-        let now = try date(2026, 11, 25, 15, 0, 0)
-        XCTAssertTrue(due.isOverdue(now: now, calendar: tokyo))
-        XCTAssertEqual(due.heading(now: now, calendar: tokyo), .today)
-    }
-
-    func testDateTimeDueYesterdayAtLastMinuteIsBeforeToday() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 24, 23, 59, 0))
-        XCTAssertEqual(due.heading(now: try date(2026, 11, 25, 12, 0, 0), calendar: tokyo), .beforeToday)
-    }
-
-    func testDateTimeDueTomorrowAtMidnightIsAfterToday() throws {
-        let due = DueDate.dateTime(try date(2026, 11, 26, 0, 0, 0))
-        XCTAssertEqual(due.heading(now: try date(2026, 11, 25, 12, 0, 0), calendar: tokyo), .afterToday)
-    }
-
     // MARK: - 見出し・期限なし
 
-    func testTodoWithoutDueDateHasNoDueDateHeadingAndIsNotOverdue() throws {
+    func testTodoWithoutDueDateHasNoDueDateHeadingAndIsNotPastDue() throws {
         let todo = Todo(title: "本を読む")
         let now = try date(2026, 11, 25, 12, 0, 0)
         XCTAssertEqual(todo.dueHeading(now: now, calendar: tokyo), .noDueDate)
-        XCTAssertFalse(todo.isOverdue(now: now, calendar: tokyo))
+        XCTAssertFalse(todo.isPastDue(now: now, calendar: tokyo))
     }
 
     func testTodoForwardsDueDateJudgement() throws {
         let todo = Todo(title: "企画書を送る", dueDate: try dueDay(2026, 11, 24))
         let now = try date(2026, 11, 25, 12, 0, 0)
         XCTAssertEqual(todo.dueHeading(now: now, calendar: tokyo), .beforeToday)
-        XCTAssertTrue(todo.isOverdue(now: now, calendar: tokyo))
+        XCTAssertTrue(todo.isPastDue(now: now, calendar: tokyo))
     }
 
     // MARK: - 見出しの 0:00 の境目
@@ -100,7 +64,7 @@ final class TodoTests: XCTestCase {
         let now = try XCTUnwrap(
             newYork.date(from: DateComponents(year: 2026, month: 11, day: 25, hour: 23, minute: 59)))
         XCTAssertEqual(due.heading(now: now, calendar: newYork), .today)
-        XCTAssertFalse(due.isOverdue(now: now, calendar: newYork))
+        XCTAssertFalse(due.isPastDue(now: now, calendar: newYork))
     }
 
     // MARK: - 和暦
@@ -109,10 +73,10 @@ final class TodoTests: XCTestCase {
         // 和暦では 2019/4/30 は平成31年、5/1 は令和元年。年だけ見ると順序が逆になる。
         var japanese = Calendar(identifier: .japanese)
         japanese.timeZone = tokyo.timeZone
-        let due = DueDate.date(CalendarDay(try date(2019, 4, 30), calendar: japanese))
+        let due = (CalendarDay(try date(2019, 4, 30), calendar: japanese))
         let now = try date(2019, 5, 1, 12, 0, 0)
         XCTAssertEqual(due.heading(now: now, calendar: japanese), .beforeToday)
-        XCTAssertTrue(due.isOverdue(now: now, calendar: japanese))
+        XCTAssertTrue(due.isPastDue(now: now, calendar: japanese))
     }
 
     // MARK: - Inbox／アーカイブ
@@ -166,7 +130,7 @@ final class TodoTests: XCTestCase {
     }
 
     /// 東京で作った日付だけの期限日。
-    private func dueDay(_ year: Int, _ month: Int, _ day: Int) throws -> DueDate {
-        .date(CalendarDay(try date(year, month, day), calendar: tokyo))
+    private func dueDay(_ year: Int, _ month: Int, _ day: Int) throws -> CalendarDay {
+        CalendarDay(try date(year, month, day), calendar: tokyo)
     }
 }

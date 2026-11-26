@@ -56,34 +56,26 @@ struct LocalTodoApp: App {
 }
 
 extension LocalTodoApp {
-    /// 取り消し・やり直しの前に確定されるもの（保留中の完了・戻す、確定していない時刻の変更）があるか。
-    private var hasPending: Bool {
-        !store.pendingToggles.isEmpty || store.hasPendingDueTimeEdit
-    }
-
     // 保留中のものは、取り消し・やり直しの前に確定されて取り消せるので、履歴が空でも取り消せる
     private var canUndo: Bool {
-        undoRouter.routesToStore ? store.canUndo || hasPending : undoRouter.textCanUndo
+        undoRouter.routesToStore
+            ? store.canUndo || !store.pendingToggles.isEmpty : undoRouter.textCanUndo
     }
 
-    // 保留中にやり直すと、先に確定した操作が新しい操作になり、やり直しの履歴が消えるので、やり直せない
+    // 保留中にやり直すと、先に確定した完了が新しい操作になり、やり直しの履歴が消えるので、やり直せない
     private var canRedo: Bool {
-        undoRouter.routesToStore ? store.canRedo && !hasPending : undoRouter.textCanRedo
+        undoRouter.routesToStore ? store.canRedo && store.pendingToggles.isEmpty : undoRouter.textCanRedo
     }
 
     /// 保留中は、取り消すと先に確定されるので、その名前を出す（履歴の先頭の操作ではない）。
-    /// 時刻の変更は完了より後に確定されるので、先に取り消される。
     private var undoTitle: String {
         guard undoRouter.routesToStore else { return "取り消す" }
-        let name =
-            store.hasPendingDueTimeEdit
-            ? TodoStore.dueDateActionName
-            : store.pendingToggles.isEmpty ? store.undoActionName : store.pendingActionName
+        let name = store.pendingToggles.isEmpty ? store.undoActionName : store.pendingActionName
         return name.isEmpty ? "取り消す" : "\(name)を取り消す"
     }
 
     private var redoTitle: String {
-        guard undoRouter.routesToStore, store.canRedo, !hasPending, !store.redoActionName.isEmpty
+        guard undoRouter.routesToStore, store.canRedo, store.pendingToggles.isEmpty, !store.redoActionName.isEmpty
         else { return "やり直す" }
         return "\(store.redoActionName)をやり直す"
     }

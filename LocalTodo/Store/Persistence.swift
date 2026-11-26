@@ -180,8 +180,10 @@ final class Persistence {
         return try encoder.encode(FileContents(version: currentVersion, todos: todos))
     }
 
-    static func decode(_ data: Data) throws -> [Todo] {
+    /// - Parameter calendar: 時刻を持っていたころの期限日（`dateTime`）を、どのタイムゾーンの日付にするか。
+    static func decode(_ data: Data, calendar: Calendar = .current) throws -> [Todo] {
         let decoder = JSONDecoder()
+        decoder.userInfo[.dueDateCalendar] = calendar
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             return try dateStyle.parse(try container.decode(String.self))

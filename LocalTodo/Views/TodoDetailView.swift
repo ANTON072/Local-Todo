@@ -149,30 +149,19 @@ private struct TodoForm: View {
     }
 }
 
-/// 期限日の欄。期限なしなら「期限日を追加」だけ、期限があれば日付ボタン・時刻・× を並べる。
+/// 期限日の欄。期限なしなら「期限日を追加」だけ、期限があれば日付ボタンと × を並べる。
 /// 「今日」ボタンは置かない。カレンダーは今日を選んだ状態で開くので、今日はそのままクリックすればよい。
 private struct DueDateField: View {
     let store: TodoStore
     let todo: Todo
 
     @State private var isCalendarShown = false
-    @FocusState private var isTimeFocused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
             if let dueDate = todo.dueDate {
-                Button(dueDate.buttonText(calendar: store.calendar)) { isCalendarShown = true }
+                Button(dueDate.label) { isCalendarShown = true }
                     .popover(isPresented: $isCalendarShown, arrowEdge: .bottom) { calendarPopover }
-                Toggle("時刻", isOn: timeToggleBinding)
-                    .toggleStyle(.checkbox)
-                if case .dateTime(let time) = dueDate {
-                    DatePicker("時刻", selection: timeBinding(time), displayedComponents: .hourAndMinute)
-                        .labelsHidden()
-                        .datePickerStyle(.field)
-                        .environment(\.calendar, store.calendar)
-                        .environment(\.timeZone, store.calendar.timeZone)
-                        .focused($isTimeFocused)
-                }
                 Spacer(minLength: 0)
                 Button {
                     store.removeDueDate(id: todo.id)
@@ -189,42 +178,15 @@ private struct DueDateField: View {
                 Spacer(minLength: 0)
             }
         }
-        // 時刻フィールドで変えた時刻は、フォーカスが外れたときに1件の取り消しとして確定する
-        .onChange(of: isTimeFocused) {
-            if !isTimeFocused { store.commitDueTime(id: todo.id) }
-        }
-        // 別の Todo を選んだとき、詳細ペインを隠したときも確定する（⌘Q での終了は saveNow が確定する）
-        .onDisappear { store.commitDueTime(id: todo.id) }
     }
 
     /// 開くたびに作り直されるので、選ばれた日は、期限があればその日、なければ今日になる。
     private var calendarPopover: some View {
         let today = CalendarDay(.now, calendar: store.calendar)
-        return MonthCalendar(
-            selected: todo.dueDate?.day(calendar: store.calendar) ?? today, today: today, calendar: store.calendar
-        ) { day in
+        return MonthCalendar(selected: todo.dueDate ?? today, today: today, calendar: store.calendar) { day in
             store.setDueDay(id: todo.id, day: day)
             isCalendarShown = false
         }
         .padding(12)
-    }
-
-    private var timeToggleBinding: Binding<Bool> {
-        Binding(
-            get: { todo.dueDate?.hasTime ?? false },
-            set: { store.setDueTimeEnabled(id: todo.id, enabled: $0) }
-        )
-    }
-
-    private func timeBinding(_ time: Date) -> Binding<Date> {
-        Binding(
-            get: { time },
-            set: { newValue in
-                var gregorian = Calendar(identifier: .gregorian)
-                gregorian.timeZone = store.calendar.timeZone
-                let parts = gregorian.dateComponents([.hour, .minute], from: newValue)
-                store.updateDueTime(id: todo.id, hour: parts.hour ?? 0, minute: parts.minute ?? 0)
-            }
-        )
     }
 }
