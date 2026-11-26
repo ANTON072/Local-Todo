@@ -13,11 +13,20 @@ struct TodoRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isChecked ? "未完了に戻す" : "完了にする")
-            Text(todo.title)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .strikethrough(isChecked)
-                .foregroundStyle(isChecked ? .secondary : .primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(todo.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .strikethrough(isChecked)
+                    .foregroundStyle(isChecked ? .secondary : .primary)
+                if let dueText = todo.dueDateRowText(now: .now, calendar: .current) {
+                    // 年をまたいだら書き方が変わるが、一覧は日付が変わるたびに描き直さないので、
+                    // 年越しの瞬間だけ古い書き方が残る。次に描き直されたときに直る
+                    Text(dueText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .padding(.vertical, 2)
     }

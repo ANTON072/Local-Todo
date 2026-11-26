@@ -47,6 +47,8 @@ final class TodoStore {
 
     @ObservationIgnored private let persistence: Persistence
     @ObservationIgnored private let now: () -> Date
+    /// 期限日の日付と時刻を決めるカレンダー（タイムゾーン）。テストで差し替える。
+    @ObservationIgnored let calendar: Calendar
     @ObservationIgnored private let scheduleTimer: Scheduler
     @ObservationIgnored private var cancelGraceTimer: (() -> Void)?
 
@@ -54,14 +56,17 @@ final class TodoStore {
     ///   - persistence: 保存先。テストでは一時フォルダのものを渡す。保存の失敗を受け取るため、
     ///     `onSaveError` をこの TodoStore が差し替える。
     ///   - now: 今の時刻。テストで差し替える。
+    ///   - calendar: 期限日の日付と時刻を決めるカレンダー。テストで差し替える。
     ///   - scheduleTimer: 保留を確定するまでの猶予を数えるタイマー。テストでは、時間を進めたら動く偽物を渡す。
     init(
         persistence: Persistence,
         now: @escaping () -> Date = { .now },
+        calendar: Calendar = .current,
         scheduleTimer: @escaping Scheduler = TodoStore.mainQueueScheduler
     ) {
         self.persistence = persistence
         self.now = now
+        self.calendar = calendar
         self.scheduleTimer = scheduleTimer
         let result = persistence.load()
         todos = result.todos
@@ -149,6 +154,78 @@ final class TodoStore {
         if registersUndo, before != updated {
             recordUndo("編集", [.edit(before: before, after: updated)])
         }
+    }
+
+    // MARK: - 期限日
+
+    /// 取り消しのメニューに出す、期限日の変更の名前。
+    static let dueDateActionName = "期限日の編集"
+
+    /// 時刻フィールドで変えている途中の Todo の、変え始める前の姿。確定したら nil に戻す。
+    private var dueTimeEditStart: Todo?
+
+    /// 時刻フィールドで変えた時刻が、まだ確定していない（取り消しの履歴に載っていない）か。
+    /// 変え始める前と同じ値に戻っていれば false。
+    var hasPendingDueTimeEdit: Bool {
+        guard let start = dueTimeEditStart else { return false }
+        return todos.first(where: { $0.id == start.id })?.dueDate != start.dueDate
+    }
+
+    /// カレンダーで日を選ぶ。時刻つきなら時刻はそのままにする。
+    func setDueDay(id: Todo.ID, day: CalendarDay) {
+        guard let current = todos.first(where: { $0.id == id }) else { return }
+        setDueDate(id: id, to: DueDate.selecting(day, keeping: current.dueDate, calendar: calendar))
+    }
+
+    /// 時刻トグル。入れるとその日の 9:00、外すとその日の日付だけにする。期限なしなら何もしない。
+    func setDueTimeEnabled(id: Todo.ID, enabled: Bool) {
+        guard let current = todos.first(where: { $0.id == id })?.dueDate else { return }
+        setDueDate(id: id, to: enabled ? current.withTime(calendar: calendar) : current.withoutTime(calendar: calendar))
+    }
+
+    /// × で期限を外す。
+    func removeDueDate(id: Todo.ID) {
+        setDueDate(id: id, to: nil)
+    }
+
+    /// 日を選ぶ・時刻の付け外し・× を、1回の操作として1件だけ取り消しの履歴に載せる。
+    /// 変わらなければ何もしない。確定していない時刻の変更があれば、先に確定する
+    /// （時刻フィールドのフォーカスが外れる前に呼ばれても、時刻の変更が別の1件として残るように）。
+    private func setDueDate(id: Todo.ID, to dueDate: DueDate?) {
+        commitPendingDueTime()
+        guard let index = todos.firstIndex(where: { $0.id == id }), todos[index].dueDate != dueDate else { return }
+        let before = todos[index]
+        todos[index].dueDate = dueDate
+        save()
+        recordUndo(Self.dueDateActionName, [.edit(before: before, after: todos[index])])
+    }
+
+    /// 時刻フィールドで時刻を変える。Todo にはすぐ入れるが、取り消しの履歴には `commitDueTime(id:)` で
+    /// まとめて1件だけ載せる（↑↓や数字を打つたびに値が変わり、1つずつ載せると ⌘Z を何度も押すことになるため）。
+    /// 期限なしなら何もしない。
+    func updateDueTime(id: Todo.ID, hour: Int, minute: Int) {
+        guard let index = todos.firstIndex(where: { $0.id == id }), let current = todos[index].dueDate else { return }
+        if let start = dueTimeEditStart, start.id != id { commitPendingDueTime() }
+        if dueTimeEditStart == nil { dueTimeEditStart = todos[index] }
+        let changed = current.changingTime(hour: hour, minute: minute, calendar: calendar)
+        guard changed != current else { return }
+        todos[index].dueDate = changed
+        save()
+    }
+
+    /// 時刻フィールドでの変更を、変え始める前から最後の値までの1件として取り消しの履歴に載せる。
+    /// フォーカスが外れたとき・別の Todo を選んだときなどにビューが呼ぶ。値が変わっていなければ載せない。
+    func commitDueTime(id: Todo.ID) {
+        guard dueTimeEditStart?.id == id else { return }
+        commitPendingDueTime()
+    }
+
+    /// どの Todo かを問わず、確定していない時刻の変更を確定する。
+    private func commitPendingDueTime() {
+        guard let start = dueTimeEditStart else { return }
+        dueTimeEditStart = nil
+        guard let after = todos.first(where: { $0.id == start.id }), after.dueDate != start.dueDate else { return }
+        recordUndo(Self.dueDateActionName, [.edit(before: start, after: after)])
     }
 
     /// Inbox かアーカイブかを問わず1件を取り除く。見つからなければ何もしない。
@@ -242,9 +319,12 @@ final class TodoStore {
         case edit(before: Todo, after: Todo)
     }
 
-    /// 直前の操作を取り消す。保留中のものがあれば、先に確定する（いま押した完了をすぐ取り消せるように）。
+    /// 直前の操作を取り消す。保留中のものと確定していない時刻の変更があれば、先に確定する
+    /// （いま押した完了や、いま変えた時刻をすぐ取り消せるように）。時刻の変更は、時刻フィールドで
+    /// 変えている最中の、いちばん新しい操作なので、あとに確定して先に取り消されるようにする。
     func undo() {
         commitPending()
+        commitPendingDueTime()
         guard undoManager.canUndo else { return }
         undoManager.undo()
         refreshUndoState()
@@ -253,6 +333,7 @@ final class TodoStore {
     /// 取り消した操作をやり直す。保留中のものがあれば、先に確定する。
     func redo() {
         commitPending()
+        commitPendingDueTime()
         guard undoManager.canRedo else { return }
         undoManager.redo()
         refreshUndoState()
@@ -325,6 +406,7 @@ final class TodoStore {
     /// 保留中のものを先に確定してから、すぐに保存し、終わるまで待つ。アプリの終了時に使う。
     func saveNow() {
         commitPending()
+        commitPendingDueTime()
         persistence.saveNow(todos)
     }
 

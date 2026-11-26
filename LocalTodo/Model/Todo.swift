@@ -57,6 +57,11 @@ struct Todo: Codable, Identifiable, Hashable {
         dueDate?.isOverdue(now: now, calendar: calendar) ?? false
     }
 
+    /// 一覧の行に出す期限日。期限なしなら nil。
+    func dueDateRowText(now: Date, calendar: Calendar) -> String? {
+        dueDate?.rowText(now: now, calendar: calendar)
+    }
+
     func dueHeading(now: Date, calendar: Calendar) -> DueHeading {
         dueDate?.heading(now: now, calendar: calendar) ?? .noDueDate
     }
@@ -105,13 +110,70 @@ enum DueDate: Codable, Hashable {
         }
     }
 
-    private func day(calendar: Calendar) -> CalendarDay {
+    func day(calendar: Calendar) -> CalendarDay {
         switch self {
         case .date(let day):
             day
         case .dateTime(let date):
             CalendarDay(date, calendar: calendar)
         }
+    }
+
+    var hasTime: Bool {
+        if case .dateTime = self { true } else { false }
+    }
+
+    /// 時刻を付けるときに入れる時刻。
+    static let defaultTime = (hour: 9, minute: 0)
+
+    /// カレンダーで `day` を選んだときの期限日。時刻つきなら時・分はそのままにして、日付だけを変える。
+    /// 期限なし（`current` が nil）なら日付だけの期限にする。
+    static func selecting(_ day: CalendarDay, keeping current: DueDate?, calendar: Calendar) -> DueDate {
+        guard case .dateTime(let time) = current else { return .date(day) }
+        let parts = gregorian(calendar).dateComponents([.hour, .minute], from: time)
+        return .dateTime(day.date(hour: parts.hour ?? 0, minute: parts.minute ?? 0, calendar: calendar))
+    }
+
+    /// 時刻を付けた期限日。前に付けていた時刻は覚えず、いつも `defaultTime` にする。時刻つきならそのまま。
+    func withTime(calendar: Calendar) -> DueDate {
+        guard case .date = self else { return self }
+        return changingTime(hour: Self.defaultTime.hour, minute: Self.defaultTime.minute, calendar: calendar)
+    }
+
+    /// 時刻を外した、その日の日付だけの期限日。
+    func withoutTime(calendar: Calendar) -> DueDate {
+        .date(day(calendar: calendar))
+    }
+
+    /// 時刻を `hour`:`minute` に変えた期限日。日付は変えない。日付だけの期限なら時刻つきにする。
+    func changingTime(hour: Int, minute: Int, calendar: Calendar) -> DueDate {
+        .dateTime(day(calendar: calendar).date(hour: hour, minute: minute, calendar: calendar))
+    }
+
+    /// 一覧の行に出す書き方。今年なら年を省く。月・日・時はゼロ埋めしない（`1/5 9:05`）。
+    func rowText(now: Date, calendar: Calendar) -> String {
+        let dueDay = day(calendar: calendar)
+        let thisYear = CalendarDay(now, calendar: calendar).year
+        let dayText = dueDay.year == thisYear ? "\(dueDay.month)/\(dueDay.day)" : dueDay.label
+        return timeLabel(calendar: calendar).map { "\(dayText) \($0)" } ?? dayText
+    }
+
+    /// 詳細ペインの日付ボタンに出す書き方。いつも年を付け、時刻は書かない（`2026/1/5`）。
+    func buttonText(calendar: Calendar) -> String {
+        day(calendar: calendar).label
+    }
+
+    private func timeLabel(calendar: Calendar) -> String? {
+        guard case .dateTime(let date) = self else { return nil }
+        let parts = Self.gregorian(calendar).dateComponents([.hour, .minute], from: date)
+        return String(format: "%d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
+    /// 時・分も、CalendarDay と同じくグレゴリオ暦で、渡されたカレンダーのタイムゾーンで取り出す。
+    private static func gregorian(_ calendar: Calendar) -> Calendar {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        return gregorian
     }
 }
 
@@ -175,6 +237,19 @@ struct CalendarDay: Codable, Hashable, Comparable {
 
     static func < (lhs: CalendarDay, rhs: CalendarDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
+    }
+
+    /// この日の、`calendar` のタイムゾーンでの `hour`:`minute`。
+    func date(hour: Int = 0, minute: Int = 0, calendar: Calendar) -> Date {
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let components = DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)
+        return gregorian.date(from: components) ?? .distantPast
+    }
+
+    /// `2026/1/5` の形。ゼロ埋めしない。
+    var label: String {
+        "\(year)/\(month)/\(day)"
     }
 }
 
