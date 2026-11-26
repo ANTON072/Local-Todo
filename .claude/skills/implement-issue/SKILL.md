@@ -74,6 +74,26 @@ make check
 
 フォーマット・リント・テストがすべて通るまで直す。画面にかかわる変更なら、アプリを起動して動きも確かめる。
 
+### 画面にかかわる変更のスクリーンショット
+
+画面にかかわる変更なら、ライトとダークのスクリーンショットを撮り、8 で PR に貼る。レビューする人が、アプリを起動しなくても見た目を確かめられるようにするため。
+
+- 変更が見える状態（行を選んだ状態など）にしてから、アプリのウィンドウだけを撮る。画面全体は撮らない（ほかのアプリの中身が写るため）。
+  ```bash
+  ID=$(swift .claude/skills/implement-issue/window-id.swift | head -1)
+  screencapture -x -o -l"$ID" <スクラッチパッド>/pr-light.png
+  ```
+- ダークは、Mac 全体の外観を一時的に切り替えて撮る。アプリの起動引数（`-AppleInterfaceStyle Dark` など）ではダークにならない。切り替える前に今の設定を控え、撮ったらすぐに戻す。
+  ```bash
+  ORIG=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+  # アプリを起動し直して撮る
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $ORIG"
+  ```
+- 撮るには、macOS の「画面収録」の権限が要る。撮れなければ、止まってユーザーに権限を足してもらう。
+- 撮った画像は、貼る前に自分で開いて、ライト・ダークになっているか、変更が写っているかを確かめる。
+- アプリは実際のデータ（todos.json）を使う。撮るために Todo を足したら、撮ったあとで取り除いてよいかユーザーに聞く。
+
 ## 8. PR を出す
 
 - 変えたファイルだけを `git add` してコミットする。`git add -A` や `git add .` は使わない。test-writer の worktree はリポジトリの中（`.claude/worktrees/…`）に作られる。.gitignore に入れてあるが、まとめて追加すると、入れ忘れたときなどに埋め込みリポジトリとしてコミットされてしまう。
@@ -84,6 +104,10 @@ make check
   - テストを書いたのは test-writer であること。テストの対象がなければ「テストの対象なし」
   - テストの名前を直したときは、何をどう直したか（code-reviewer が、ケースや期待値を変えていないか確かめられるように）
   - Issue の決めごとから外れた点
+- 画面にかかわる変更なら、PR を出したあと、7 で撮ったスクリーンショットをコメントで貼る。`gh pr create` と `gh pr edit` には画像を添付するオプションがなく、`gh pr comment` の `--attach` だけが使える。本文のファイルに `![ライトモード](./pr-light.png)` のように書いておくと、アップロード先の URL に置き換わる。
+  ```bash
+  gh pr comment <PR の番号> --body-file <ファイル> --attach './pr-light.png#ライトモード' --attach './pr-dark.png#ダークモード'
+  ```
 
 ## 9. レビューさせる
 
