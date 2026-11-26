@@ -83,7 +83,7 @@ make check
   ```bash
   SHOTS=<スクラッチパッドの絶対パス>
   ID=$(swift .claude/skills/implement-issue/window-id.swift | head -1)
-  screencapture -x -o -l"$ID" "$SHOTS/pr-light.png"
+  if [ -n "$ID" ]; then screencapture -x -o -l"$ID" "$SHOTS/pr-light.png"; else echo 'LocalTodo のウィンドウが見つからない'; fi
   ```
 - ダークは、Mac 全体の外観を一時的に切り替えて撮る。アプリの起動引数（`-AppleInterfaceStyle Dark` など）ではダークにならない。切り替える前に今の設定を控え、撮ったらすぐに戻す。
   ```bash
@@ -92,10 +92,12 @@ make check
   osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
   # アプリを起動し直し、変更が見える状態にしてから撮る
   ID=$(swift .claude/skills/implement-issue/window-id.swift | head -1)
-  screencapture -x -o -l"$ID" "$SHOTS/pr-dark.png"
+  if [ -n "$ID" ]; then screencapture -x -o -l"$ID" "$SHOTS/pr-dark.png"; else echo 'LocalTodo のウィンドウが見つからない'; fi
+  # 撮れても撮れなくても、外観は必ず戻す（途中で止めない）
   osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $ORIG"
   ```
-- 撮るには、macOS の「画面収録」の権限が要る。撮れなければ、止まってユーザーに権限を足してもらう。
+- 「LocalTodo のウィンドウが見つからない」と出たら、権限ではなく、アプリが起動していないかウィンドウが画面に出ていない。アプリを起動し、ウィンドウを前に出してから撮り直す。
+- ウィンドウが見つかっているのに `screencapture` が失敗するときは、macOS の「画面収録」の権限がない。止まってユーザーに権限を足してもらう。
 - 撮った画像は、貼る前に自分で開いて、ライト・ダークになっているか、変更が写っているかを確かめる。
 - アプリは実際のデータ（todos.json）を使う。撮るために Todo を足したら、撮ったあとで取り除いてよいかユーザーに聞く。
 
