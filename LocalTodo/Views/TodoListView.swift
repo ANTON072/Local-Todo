@@ -16,8 +16,15 @@ struct TodoListView: View {
             }
             List(kind.todos(in: store), selection: $selection) { todo in
                 TodoRowView(todo: todo)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 8)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(card(isSelected: todo.id == selection))
+                    .background(SelectionHighlightRemover())
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .background(Self.listBackground)
         }
         .navigationTitle(kind.title)
         .onChange(of: kind) {
@@ -26,6 +33,43 @@ struct TodoListView: View {
         .onAppear {
             isInputFocused = kind.showsNewTodoField
         }
+    }
+
+    /// 行を1件ずつ浮かせるカード。上下にすき間を空けて、隣の行と区切る。
+    /// 選んだ行は、カードにアクセントカラーを薄く重ね、縁を細く引く。塗りつぶすと色が強すぎるため
+    /// （macOS の選択の背景は SelectionHighlightRemover で消している）。
+    private func card(isSelected: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+        return
+            shape
+            .fill(Self.cardBackground)
+            .overlay {
+                if isSelected {
+                    shape.fill(Color.accentColor.opacity(0.12))
+                    shape.strokeBorder(Color.accentColor.opacity(0.6), lineWidth: 1)
+                }
+            }
+            .shadow(color: .black.opacity(0.08), radius: 1.5, y: 1)
+            .padding(.vertical, 3)
+            .padding(.horizontal, 10)
+    }
+
+    /// カードの後ろのブルーグレー。カードより暗くして、カードを浮かせる。
+    private static let listBackground = dynamicColor(
+        light: NSColor(srgbRed: 0.93, green: 0.95, blue: 0.97, alpha: 1),
+        dark: NSColor(srgbRed: 0.09, green: 0.10, blue: 0.12, alpha: 1))
+
+    /// カードの色。ダークでは、システムのコントロールの背景色だと背景とほぼ同じ明るさになり
+    /// カードが溶けるので、背景より一段明るいブルーグレーにする。
+    private static let cardBackground = dynamicColor(
+        light: .white,
+        dark: NSColor(srgbRed: 0.17, green: 0.18, blue: 0.21, alpha: 1))
+
+    private static func dynamicColor(light: NSColor, dark: NSColor) -> Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            })
     }
 
     private var newTodoField: some View {
@@ -56,4 +100,26 @@ struct TodoListView: View {
     private var isComposingText: Bool {
         (NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
     }
+}
+
+/// List の土台の NSTableView を探し、macOS が描く選択の背景を消す。
+/// 選択の背景がカードの外にはみ出し、白いカードの上で選択中の白い文字が見えなくなるため、
+/// 選択はカードの色で表す。選択そのもの（クリック・↑↓）は List のまま使う。
+private struct SelectionHighlightRemover: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            var current = view.superview
+            while let candidate = current {
+                if let tableView = candidate as? NSTableView {
+                    tableView.selectionHighlightStyle = .none
+                    return
+                }
+                current = candidate.superview
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
