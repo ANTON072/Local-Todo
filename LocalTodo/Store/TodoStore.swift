@@ -1,6 +1,14 @@
 import Foundation
 import Observation
 
+/// Inbox の、1つの見出しとそこに入る Todo。
+struct DueSection: Identifiable, Equatable {
+    let heading: DueHeading
+    let todos: [Todo]
+
+    var id: DueHeading { heading }
+}
+
 /// Todo の状態を持つただ1つの場所。ビューは一覧を受け取り、ここの操作を呼ぶだけにする。
 ///
 /// 起動時に `Persistence` から全件を読み、以降はメモリ上の `todos` を正とする。
@@ -78,9 +86,31 @@ final class TodoStore {
 
     // MARK: - 一覧
 
-    /// 作成日時の新しい順。
+    /// 期限日の早い順。期限なしは末尾。同じ期限日の中は、作成日時の新しい順。
+    /// 作成日時も同じなら、あとから加わったもの（配列で後ろにあるもの）を上にする。
     var inboxTodos: [Todo] {
-        sortedNewestFirst(todos.filter { !$0.isArchived }, by: \.createdAt)
+        todos.enumerated()
+            .filter { !$0.element.isArchived }
+            .sorted { lhs, rhs in
+                switch (lhs.element.dueDate, rhs.element.dueDate) {
+                case (let lhsDay?, let rhsDay?) where lhsDay != rhsDay: return lhsDay < rhsDay
+                case (.some, .none): return true
+                case (.none, .some): return false
+                default:
+                    let (lhsDate, rhsDate) = (lhs.element.createdAt, rhs.element.createdAt)
+                    return lhsDate != rhsDate ? lhsDate > rhsDate : lhs.offset > rhs.offset
+                }
+            }
+            .map(\.element)
+    }
+
+    /// Inbox を見出しで区切ったもの。見出しは「期限切れ」「今日」「明日以降」「期限なし」の順で、
+    /// Todo が1件もない見出しは含めない。「今日」は `now` で決める（呼ぶたびに取り直す）。
+    func inboxSections(now: Date) -> [DueSection] {
+        let grouped = Dictionary(grouping: inboxTodos) { $0.dueHeading(now: now, calendar: calendar) }
+        return DueHeading.allCases.compactMap { heading in
+            grouped[heading].map { DueSection(heading: heading, todos: $0) }
+        }
     }
 
     /// 完了日時の新しい順。
