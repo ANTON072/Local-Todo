@@ -173,9 +173,10 @@ struct TodoListView: View {
             .overlay(alignment: .leading) {
                 if showsPastDueBar {
                     Rectangle().fill(Color.red).frame(width: 3)
-                        .clipShape(shape)
                 }
             }
+            // バーがカードの丸い角からはみ出さないよう、重ねたものまとめてカードの形で切る
+            .clipShape(shape)
             .shadow(color: .black.opacity(0.08), radius: 1.5, y: 1)
             .padding(.vertical, 3)
             .padding(.horizontal, 10)
