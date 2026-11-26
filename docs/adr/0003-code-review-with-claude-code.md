@@ -13,4 +13,4 @@ PR のレビューには GitHub Copilot を使わず、Mac 上の Claude Code �
 
 ## Consequences
 
-レビューはユーザーのアカウントから投稿されるので、承認や変更の要求はできず、種類は「コメント」だけになる。手で書いたコメントと見分けるため、レビュー本文の1行目に「Claude Code（code-reviewer）のレビュー」と書く。PR を出しただけではレビューは走らないので、implement-issue が PR を出したあとに `make review` を呼ぶ（docs/adr/0006-one-skill-from-implementation-to-review.md）。
+レビューはユーザーのアカウントから投稿されるので、承認や変更の要求はできず、種類は「コメント」だけになる。手で書いたコメントと見分けるため、レビュー本文の1行目に「Claude Code（code-reviewer）のレビュー」と書く。PR を出しただけではレビューは走らないので、PR を出したセッションが、そのあとに `make review` を呼ぶ（docs/adr/0006-one-skill-from-implementation-to-review.md）。

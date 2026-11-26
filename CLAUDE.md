@@ -42,8 +42,7 @@ Swift のファイルを編集したら、PR を出す前に `make check` を実
 
 PR のレビューは、手元の Claude Code（`.claude/agents/code-reviewer.md`）が、コードを書いたセッションとは別のセッションで行う（理由は docs/adr/0003-code-review-with-claude-code.md）。
 
-- implement-issue で出した PR は、スキルが `make review PR=<PR の URL>` を1回だけ呼ぶ。PR 全体のレビューはやり直さない（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
-- implement-issue 以外で PR を出したとき（ドキュメントやスキルだけの変更を手で進めたときなど）は、`make review PR=<PR の URL>` の実行をユーザーに案内する。
+- PR を出したら、PR を出したセッションが `make review PR=<PR の URL>` を1回だけ呼ぶ。implement-issue では手順 9 で呼ぶ。implement-issue を使わずに PR を出したとき（ドキュメントやスキルだけの変更を手で進めたときなど）も同じにする。PR 全体のレビューはやり直さない。もう一度呼んでよいのは、失敗してレビューが投稿されなかったときだけ（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
 - レビューコメントへの対応は、1件ずつ address-review-comment スキルで行う。修正の確認は `make re-review COMMENT=<コメントの URL>`、push したあとの返信と resolve は `make resolve COMMENT=<コメントの URL>` で行う。
 
 ## 用語

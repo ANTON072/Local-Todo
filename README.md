@@ -84,11 +84,8 @@ grilling と domain-modeling は grill-with-docs の中で呼ばれるもので�
 | `make lint` | Swift のファイルが規則に合っているか調べる |
 | `make test` | `LocalTodo.xcodeproj` を生成し直してから単体テストを実行する |
 | `make generate` | `project.yml` から `LocalTodo.xcodeproj` を生成する |
-| `make review PR=<URL>` | PR 全体を手元の Claude Code にレビューさせ、指摘を PR の行に投稿する。implement-issue を使わずに出した PR のときに使う |
 
-`review` には [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
-
-レビューコメントを扱うコマンド（`re-review`・`resolve`・`comment`・`reply`・`unresolved`）は、スキルが使うもので、手では打たない。中身は `Makefile` に書いてある。
+レビューにかかわるコマンド（`review`・`re-review`・`resolve`・`comment`・`reply`・`unresolved`）は、Claude Code が使うもので、手では打たない。中身は `Makefile` に書いてある。どれも [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
 
 ## データの場所とバックアップ
 
