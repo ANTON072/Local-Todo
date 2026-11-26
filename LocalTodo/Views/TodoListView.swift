@@ -42,7 +42,7 @@ struct TodoListView: View {
         let shape = RoundedRectangle(cornerRadius: 8)
         return
             shape
-            .fill(Color(nsColor: .controlBackgroundColor))
+            .fill(Self.cardBackground)
             .overlay {
                 if isSelected {
                     shape.fill(Color.accentColor.opacity(0.12))
@@ -54,13 +54,23 @@ struct TodoListView: View {
             .padding(.horizontal, 10)
     }
 
-    /// カードの後ろの薄いブルーグレー。白いカードを引き立てる。
-    private static let listBackground = Color(
-        nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                ? NSColor(srgbRed: 0.09, green: 0.10, blue: 0.12, alpha: 1)
-                : NSColor(srgbRed: 0.93, green: 0.95, blue: 0.97, alpha: 1)
-        })
+    /// カードの後ろのブルーグレー。カードより暗くして、カードを浮かせる。
+    private static let listBackground = dynamicColor(
+        light: NSColor(srgbRed: 0.93, green: 0.95, blue: 0.97, alpha: 1),
+        dark: NSColor(srgbRed: 0.09, green: 0.10, blue: 0.12, alpha: 1))
+
+    /// カードの色。ダークでは、システムのコントロールの背景色だと背景とほぼ同じ明るさになり
+    /// カードが溶けるので、背景より一段明るいブルーグレーにする。
+    private static let cardBackground = dynamicColor(
+        light: .white,
+        dark: NSColor(srgbRed: 0.17, green: 0.18, blue: 0.21, alpha: 1))
+
+    private static func dynamicColor(light: NSColor, dark: NSColor) -> Color {
+        Color(
+            nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            })
+    }
 
     private var newTodoField: some View {
         HStack(spacing: 6) {
