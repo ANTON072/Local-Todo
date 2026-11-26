@@ -1,3 +1,7 @@
+---
+status: superseded by ADR-0006
+---
+
 # ready の Issue は make auto で順に進め、レビューはスクリプトが呼ぶ
 
 `ready` の Issue は、`make auto`（`scripts/auto.sh`）で1件ずつ、実装 → PR → レビュー → レビュー対応まで進める。1人で作るアプリで、Issue ごとに implement-issue を呼び、`make review` を打ち、コメントを1件ずつ渡す手間を省くためである。
