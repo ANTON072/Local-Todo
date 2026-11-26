@@ -220,6 +220,110 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertEqual(try titlesInFile(), ["企画書を送る"])
     }
 
+    // MARK: - 追加・タイトルの途中の改行
+
+    func testAddReplacesNewlineInsideTitleWithSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\n卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+        XCTAssertEqual(store.inboxTodos.map(\.title), ["牛乳 卵"])
+    }
+
+    func testAddCollapsesConsecutiveLineFeedsIntoOneSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\n\n卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddReplacesCRLFWithOneSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\r\n卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddTrimsNewlinesAroundTitleInsteadOfReplacingThem() throws {
+        let store = makeStore()
+
+        // 前後の改行はスペースにせず、取り除く
+        let added = try XCTUnwrap(store.add(title: "\n牛乳\n"))
+
+        XCTAssertEqual(added.title, "牛乳")
+    }
+
+    func testAddReplacesCarriageReturnAloneWithSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\r卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddCollapsesConsecutiveCRLFsIntoOneSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\r\n\r\n卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddCollapsesMixedNewlinesIntoOneSpace() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "牛乳\n\r\n\r卵"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddReplacesEachSeparateNewlineWithItsOwnSpace() throws {
+        let store = makeStore()
+
+        // 離れた改行は、それぞれ1つのスペースになる
+        let added = try XCTUnwrap(store.add(title: "牛乳\n卵\nパン"))
+
+        XCTAssertEqual(added.title, "牛乳 卵 パン")
+    }
+
+    func testAddTrimsSurroundingNewlinesAndReplacesInnerOnes() throws {
+        let store = makeStore()
+
+        let added = try XCTUnwrap(store.add(title: "\r\n\n牛乳\n\n卵\r\n"))
+
+        XCTAssertEqual(added.title, "牛乳 卵")
+    }
+
+    func testAddKeepsSpacesNextToInnerNewline() throws {
+        let store = makeStore()
+
+        // 置き換えるのは改行だけ。改行の両側の空白はそのまま残る
+        let added = try XCTUnwrap(store.add(title: "牛乳 \n 卵"))
+
+        XCTAssertEqual(added.title, "牛乳   卵")
+    }
+
+    func testAddKeepsTabInsideTitle() throws {
+        let store = makeStore()
+
+        // タブは改行ではないので置き換えない
+        let added = try XCTUnwrap(store.add(title: "牛乳\t卵"))
+
+        XCTAssertEqual(added.title, "牛乳\t卵")
+    }
+
+    func testAddSavesTitleWithNewlineReplaced() throws {
+        let store = makeStore()
+
+        store.add(title: "牛乳\n卵")
+
+        waitForScheduledSave()
+        XCTAssertEqual(try titlesInFile(), ["牛乳 卵"])
+    }
+
     // MARK: - 編集
 
     func testUpdateReplacesTodoWithSameID() throws {

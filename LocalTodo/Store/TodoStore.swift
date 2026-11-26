@@ -56,11 +56,13 @@ final class TodoStore {
 
     // MARK: - 操作
 
-    /// タイトルの前後の空白（改行を含む）を除いて追加する。
+    /// タイトルの前後の空白（改行を含む）を除き、途中の改行を半角スペースにして追加する。
+    /// 続いた改行（`\r\n` や空の行）は1つのスペースにまとめる。タイトルは1行で表示するため。
     /// - Returns: 追加した Todo。除いたあとに空なら追加せず nil を返す。
     @discardableResult
     func add(title: String) -> Todo? {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\R+", with: " ", options: .regularExpression)
         guard !trimmed.isEmpty else { return nil }
         let todo = Todo(title: trimmed, createdAt: now())
         todos.append(todo)

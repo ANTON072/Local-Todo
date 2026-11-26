@@ -41,9 +41,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct ContentView: View {
     let store: TodoStore
+    @State private var listKind = TodoListKind.inbox
 
     var body: some View {
-        Color.clear
-            .frame(minWidth: 800, minHeight: 500)
+        NavigationSplitView {
+            SidebarView(selection: $listKind)
+        } content: {
+            TodoListView(store: store, kind: listKind)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 380)
+        } detail: {
+            // 詳細ペインは #6 で作る
+            Color.clear
+        }
+        .frame(minWidth: 800, minHeight: 500)
     }
 }
