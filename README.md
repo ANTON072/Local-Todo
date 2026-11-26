@@ -34,6 +34,25 @@ macOS 14 以上の Mac が必要。
 
 アプリを起動するときは、`LocalTodo.xcodeproj` を Xcode で開いて実行（⌘R）する。`project.yml` を変えたら `make generate` で生成し直す。
 
+## 開発の進め方
+
+Issue 1件を、Claude Code と対話しながら次の順に進める。全自動では進めない（理由は docs/adr/0006-one-skill-from-implementation-to-review.md）。
+
+1. **Issue を詰める**：`/grill-with-docs <Issue の URL>` で、Claude Code の質問に1問ずつ答える。決めたことは Issue の本文に反映される。ADR・CONTEXT.md の変更はコミットされずに残り、次の実装の PR に入る。
+2. **実装からレビュー対応まで**：「この Issue を実装して <Issue の URL>」と頼む。implement-issue スキルが、次の順に進める。途中で判断が要れば、その場で聞かれる。
+   - ブランチを切る
+   - テストを書く（実装とは別のエージェントが先に書く）
+   - 実装する
+   - `make check`
+   - PR を出す
+   - `make review`
+   - レビューコメントに1件ずつ対応する
+3. **マージ**：PR の中身を見て、人がマージする。
+
+組織の設定で、`make` や `git push` を実行するたびに確認を求められる。その場で答える。
+
+マージ前に自分でレビューコメントを付けたときは、「このコメントを対応して <コメントの URL>」と頼む（address-review-comment スキル）。
+
 ## 開発で使うコマンド
 
 | コマンド | 内容 |
@@ -46,6 +65,9 @@ macOS 14 以上の Mac が必要。
 | `make review PR=<URL>` | PR 全体を手元の Claude Code にレビューさせ、指摘を PR の行に投稿する |
 | `make re-review COMMENT=<URL>` | レビューコメント1件に対するコミット前の修正を、手元の Claude Code に再レビューさせる |
 | `make resolve COMMENT=<URL>` | push したあと、レビューコメント1件に修正コミットのリンクを返信して resolve する |
+| `make comment COMMENT=<URL>` | レビューコメント1件の中身を出す |
+| `make reply COMMENT=<URL> BODY=<ファイル>` | レビューコメント1件に、ファイルの中身で返信する（resolve はしない） |
+| `make unresolved PR=<URL>` | PR の未解決のスレッドの、最初のコメントの URL を出す |
 
 `review` と `re-review` には [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
 
