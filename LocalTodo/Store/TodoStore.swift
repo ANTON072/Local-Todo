@@ -13,17 +13,41 @@ final class TodoStore {
     let loadSource: Persistence.LoadSource
     /// 最後の保存の失敗。画面への出し方は #44。
     private(set) var lastSaveError: Error?
+    /// 保留中の Todo。値は、完了のチェックを入れた（アーカイブでは外した）時刻。
+    /// 確定するまで `completedAt` と一覧は変えず、見た目だけを切り替える。
+    private(set) var pendingToggles: [Todo.ID: Date] = [:]
+
+    /// 保留を確定するまでの猶予。最後の操作から数える。
+    static let graceInterval: TimeInterval = 3
+
+    /// 「何秒後にこの処理を動かすか」を受け取り、取り消す関数を返す。メインスレッドで動かす。
+    typealias Scheduler = (TimeInterval, @escaping () -> Void) -> () -> Void
+
+    /// 本物のタイマー。メインキューで動かす。
+    static let mainQueueScheduler: Scheduler = { delay, action in
+        let item = DispatchWorkItem(block: action)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        return { item.cancel() }
+    }
 
     @ObservationIgnored private let persistence: Persistence
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let scheduleTimer: Scheduler
+    @ObservationIgnored private var cancelGraceTimer: (() -> Void)?
 
     /// - Parameters:
     ///   - persistence: 保存先。テストでは一時フォルダのものを渡す。保存の失敗を受け取るため、
     ///     `onSaveError` をこの TodoStore が差し替える。
     ///   - now: 今の時刻。テストで差し替える。
-    init(persistence: Persistence, now: @escaping () -> Date = { .now }) {
+    ///   - scheduleTimer: 保留を確定するまでの猶予を数えるタイマー。テストでは、時間を進めたら動く偽物を渡す。
+    init(
+        persistence: Persistence,
+        now: @escaping () -> Date = { .now },
+        scheduleTimer: @escaping Scheduler = TodoStore.mainQueueScheduler
+    ) {
         self.persistence = persistence
         self.now = now
+        self.scheduleTimer = scheduleTimer
         let result = persistence.load()
         todos = result.todos
         loadSource = result.source
@@ -104,16 +128,63 @@ final class TodoStore {
     }
 
     /// Inbox かアーカイブかを問わず1件を取り除く。見つからなければ何もしない。
+    /// 保留中なら保留から外す（消した Todo に完了日時を書かないため）。
     func delete(id: Todo.ID) {
         guard let index = todos.firstIndex(where: { $0.id == id }) else { return }
         todos.remove(at: index)
+        if pendingToggles.removeValue(forKey: id) != nil { restartGraceTimer() }
         save()
+    }
+
+    // MARK: - 完了とアーカイブ（保留）
+
+    /// 完了のチェックを入れる（アーカイブでは外す）。猶予の間にもう一度呼ぶと保留から外れる。
+    /// 最後の操作（外した場合も）から `graceInterval` たつと、保留中のものをまとめて確定する。
+    /// 見つからなければ何もしない。
+    func toggleCompletion(id: Todo.ID) {
+        guard todos.contains(where: { $0.id == id }) else { return }
+        if pendingToggles.removeValue(forKey: id) == nil {
+            pendingToggles[id] = now()
+        }
+        restartGraceTimer()
+    }
+
+    /// 見た目の上で完了か。保留中なら、持っている状態（`isArchived`）と逆になる。
+    /// 見つからなければ false。
+    func isShownCompleted(id: Todo.ID) -> Bool {
+        guard let todo = todos.first(where: { $0.id == id }) else { return false }
+        return todo.isArchived != (pendingToggles[id] != nil)
+    }
+
+    /// 保留中のものをまとめて確定する。Inbox の Todo にはチェックした時刻を完了日時として入れ、
+    /// アーカイブの Todo は完了日時を外して Inbox へ戻す。
+    private func commitPending() {
+        cancelGraceTimer?()
+        cancelGraceTimer = nil
+        guard !pendingToggles.isEmpty else { return }
+        for (id, checkedAt) in pendingToggles {
+            guard let index = todos.firstIndex(where: { $0.id == id }) else { continue }
+            todos[index].completedAt = todos[index].isArchived ? nil : checkedAt
+        }
+        pendingToggles = [:]
+        save()
+    }
+
+    /// 猶予を最後の操作から数え直す。保留が空ならタイマーを止める。
+    private func restartGraceTimer() {
+        cancelGraceTimer?()
+        cancelGraceTimer = nil
+        guard !pendingToggles.isEmpty else { return }
+        cancelGraceTimer = scheduleTimer(Self.graceInterval) { [weak self] in
+            self?.commitPending()
+        }
     }
 
     // MARK: - 保存
 
-    /// すぐに保存し、終わるまで待つ。アプリの終了時に使う。
+    /// 保留中のものを先に確定してから、すぐに保存し、終わるまで待つ。アプリの終了時に使う。
     func saveNow() {
+        commitPending()
         persistence.saveNow(todos)
     }
 

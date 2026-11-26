@@ -16,12 +16,15 @@ struct TodoListView: View {
                     .padding(12)
             }
             List(kind.todos(in: store), selection: $selection) { todo in
-                TodoRowView(todo: todo)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 8)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(card(isSelected: todo.id == selection))
-                    .background(SelectionHighlightRemover())
+                TodoRowView(
+                    todo: todo, isChecked: store.isShownCompleted(id: todo.id),
+                    onToggle: { store.toggleCompletion(id: todo.id) }
+                )
+                .padding(.horizontal, 6)
+                .padding(.vertical, 8)
+                .listRowSeparator(.hidden)
+                .listRowBackground(card(isSelected: todo.id == selection))
+                .background(SelectionHighlightRemover())
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
@@ -30,6 +33,10 @@ struct TodoListView: View {
         .navigationTitle(kind.title)
         .onChange(of: kind) {
             selection = nil
+        }
+        // 確定でこの一覧から消えた行を選んでいたら、選択を外す
+        .onChange(of: kind.todos(in: store).map(\.id)) { _, ids in
+            if let selection, !ids.contains(selection) { self.selection = nil }
         }
         .onAppear {
             isInputFocused = kind.showsNewTodoField
