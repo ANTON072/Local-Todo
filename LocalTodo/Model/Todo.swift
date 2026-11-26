@@ -33,6 +33,20 @@ struct Todo: Codable, Identifiable, Hashable {
         self.completedAt = completedAt
     }
 
+    /// `base` から `target` で変わった項目だけを、この Todo に当てた Todo を返す。
+    /// 取り消し・やり直しで、あとから別の項目を直していても、その直しを巻き込まないために使う。
+    func applying(_ target: Todo, changedFrom base: Todo) -> Todo {
+        var result = self
+        if target.title != base.title { result.title = target.title }
+        if target.titleURL != base.titleURL { result.titleURL = target.titleURL }
+        if target.links != base.links { result.links = target.links }
+        if target.descriptionText != base.descriptionText { result.descriptionText = target.descriptionText }
+        if target.dueDate != base.dueDate { result.dueDate = target.dueDate }
+        if target.tags != base.tags { result.tags = target.tags }
+        if target.completedAt != base.completedAt { result.completedAt = target.completedAt }
+        return result
+    }
+
     /// 完了日時があればアーカイブ、なければ Inbox。
     var isArchived: Bool {
         completedAt != nil
