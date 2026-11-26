@@ -62,14 +62,11 @@ Issue 1件を、Claude Code と対話しながら次の順に進める。全自�
 | `make lint` | Swift のファイルが規則に合っているか調べる |
 | `make test` | `LocalTodo.xcodeproj` を生成し直してから単体テストを実行する |
 | `make generate` | `project.yml` から `LocalTodo.xcodeproj` を生成する |
-| `make review PR=<URL>` | PR 全体を手元の Claude Code にレビューさせ、指摘を PR の行に投稿する |
-| `make re-review COMMENT=<URL>` | レビューコメント1件に対するコミット前の修正を、手元の Claude Code に再レビューさせる |
-| `make resolve COMMENT=<URL>` | push したあと、レビューコメント1件に修正コミットのリンクを返信して resolve する |
-| `make comment COMMENT=<URL>` | レビューコメント1件の中身を出す |
-| `make reply COMMENT=<URL> BODY=<ファイル>` | レビューコメント1件に、ファイルの中身で返信する（resolve はしない） |
-| `make unresolved PR=<URL>` | PR の未解決のスレッドの、最初のコメントの URL を出す |
+| `make review PR=<URL>` | PR 全体を手元の Claude Code にレビューさせ、指摘を PR の行に投稿する。implement-issue を使わずに出した PR のときに使う |
 
-`review` と `re-review` には [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
+`review` には [Claude Code](https://claude.com/claude-code)（`claude` コマンド）と `jq` が要る。
+
+レビューコメントを扱うコマンド（`re-review`・`resolve`・`comment`・`reply`・`unresolved`）は、スキルが使うもので、手では打たない。中身は `Makefile` に書いてある。
 
 ## データの場所とバックアップ
 
