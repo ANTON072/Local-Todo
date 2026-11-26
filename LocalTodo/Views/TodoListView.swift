@@ -4,8 +4,9 @@ struct TodoListView: View {
     let store: TodoStore
     let kind: TodoListKind
 
+    @Binding var selection: Todo.ID?
+
     @State private var inputText = ""
-    @State private var selection: Todo.ID?
     @FocusState private var isInputFocused: Bool
 
     var body: some View {

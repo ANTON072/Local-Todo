@@ -4,6 +4,7 @@ import SwiftUI
 struct LocalTodoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store: TodoStore
+    @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
 
     init() {
         let directory: URL
@@ -29,6 +30,14 @@ struct LocalTodoApp: App {
         Window("LocalTodo", id: "main") {
             ContentView(store: store)
         }
+        .commands {
+            CommandGroup(after: .sidebar) {
+                Button(showsDetailPane ? "詳細ペインを隠す" : "詳細ペインを表示") {
+                    showsDetailPane.toggle()
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+        }
     }
 }
 
@@ -39,19 +48,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+enum DetailPane {
+    /// 詳細ペインの表示／非表示を `@AppStorage` で保つキー。初めて起動したときは表示する。
+    static let storageKey = "showsDetailPane"
+}
+
 private struct ContentView: View {
     let store: TodoStore
     @State private var listKind = TodoListKind.inbox
+    @State private var selection: Todo.ID?
+    @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
 
     var body: some View {
+        // 詳細ペインは右だけを隠せるよう、3列目ではなく inspector にする（NavigationSplitView は右の列だけを隠せない）
         NavigationSplitView {
             SidebarView(selection: $listKind)
-        } content: {
-            TodoListView(store: store, kind: listKind)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 380)
         } detail: {
-            // 詳細ペインは #6 で作る
-            Color.clear
+            TodoListView(store: store, kind: listKind, selection: $selection)
+                .inspector(isPresented: $showsDetailPane) {
+                    Group {
+                        if let selection {
+                            // 選択が変わるたびに作り直し、打ちかけのタイトルを元の Todo に確定させる
+                            TodoDetailView(store: store, todoID: selection)
+                                .id(selection)
+                        } else {
+                            DetailPlaceholder()
+                        }
+                    }
+                    .inspectorColumnWidth(min: 260, ideal: 300, max: 500)
+                }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    showsDetailPane.toggle()
+                } label: {
+                    Label("詳細ペイン", systemImage: "sidebar.right")
+                }
+                .help("詳細ペインを表示／隠す（⌥⌘I）")
+            }
         }
         .frame(minWidth: 800, minHeight: 500)
     }
