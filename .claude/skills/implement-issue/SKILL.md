@@ -74,6 +74,33 @@ make check
 
 フォーマット・リント・テストがすべて通るまで直す。画面にかかわる変更なら、アプリを起動して動きも確かめる。
 
+### 画面にかかわる変更のスクリーンショット
+
+画面にかかわる変更なら、ライトとダークのスクリーンショットを撮り、8 で PR に貼る。レビューする人が、アプリを起動しなくても見た目を確かめられるようにするため。
+
+- 画像は、セッションのスクラッチパッドに置く。リポジトリの中に置くと、誤ってコミットするおそれがあるため。手順8で使う本文のファイルも同じ場所に置く。シェルの変数は Bash の呼び出しをまたいで残らないので、下のコードブロックでは、どれも先頭で `SHOTS=<スクラッチパッドの絶対パス>` を設定し直す。
+- 変更が見える状態（行を選んだ状態など）にしてから、アプリのウィンドウだけを撮る。画面全体は撮らない（ほかのアプリの中身が写るため）。
+  ```bash
+  SHOTS=<スクラッチパッドの絶対パス>
+  ID=$(swift .claude/skills/implement-issue/window-id.swift | head -1)
+  if [ -n "$ID" ]; then screencapture -x -o -l"$ID" "$SHOTS/pr-light.png"; else echo 'LocalTodo のウィンドウが見つからない'; fi
+  ```
+- ダークは、Mac 全体の外観を一時的に切り替えて撮る。アプリの起動引数（`-AppleInterfaceStyle Dark` など）ではダークにならない。切り替える前に今の設定を控え、撮ったらすぐに戻す。
+  ```bash
+  SHOTS=<スクラッチパッドの絶対パス>
+  ORIG=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+  # アプリを起動し直し、変更が見える状態にしてから撮る
+  ID=$(swift .claude/skills/implement-issue/window-id.swift | head -1)
+  if [ -n "$ID" ]; then screencapture -x -o -l"$ID" "$SHOTS/pr-dark.png"; else echo 'LocalTodo のウィンドウが見つからない'; fi
+  # 撮れても撮れなくても、外観は必ず戻す（途中で止めない）
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $ORIG"
+  ```
+- 「LocalTodo のウィンドウが見つからない」と出たら、権限ではなく、アプリが起動していないかウィンドウが画面に出ていない。アプリを起動し、ウィンドウを前に出してから撮り直す。
+- ウィンドウが見つかっているのに `screencapture` が失敗するときは、macOS の「画面収録」の権限がない。止まってユーザーに権限を足してもらう。
+- 撮った画像は、貼る前に自分で開いて、ライト・ダークになっているか、変更が写っているかを確かめる。
+- アプリは実際のデータ（todos.json）を使う。撮るために Todo を足したら、撮ったあとで取り除いてよいかユーザーに聞く。
+
 ## 8. PR を出す
 
 - 変えたファイルだけを `git add` してコミットする。`git add -A` や `git add .` は使わない。test-writer の worktree はリポジトリの中（`.claude/worktrees/…`）に作られる。.gitignore に入れてあるが、まとめて追加すると、入れ忘れたときなどに埋め込みリポジトリとしてコミットされてしまう。
@@ -84,6 +111,11 @@ make check
   - テストを書いたのは test-writer であること。テストの対象がなければ「テストの対象なし」
   - テストの名前を直したときは、何をどう直したか（code-reviewer が、ケースや期待値を変えていないか確かめられるように）
   - Issue の決めごとから外れた点
+- 画面にかかわる変更なら、PR を出したあと、7 で撮ったスクリーンショットをコメントで貼る。`gh pr create` と `gh pr edit` には画像を添付するオプションがなく、`gh pr comment` の `--attach` だけが使える。本文のファイル（`$SHOTS/pr-shots.md`）に `![ライトモード](./pr-light.png)` のように書いておくと、アップロード先の URL に置き換わる。本文の中のパスは、本文のファイルのある場所から読まれる。
+  ```bash
+  SHOTS=<スクラッチパッドの絶対パス>
+  gh pr comment <PR の番号> --body-file "$SHOTS/pr-shots.md" --attach "$SHOTS/pr-light.png#ライトモード" --attach "$SHOTS/pr-dark.png#ダークモード"
+  ```
 
 ## 9. レビューさせる
 
