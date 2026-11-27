@@ -52,8 +52,8 @@ Issue 1件を、Claude Code と対話しながら次の順に進める。全自�
    - 実装する
    - `make check`
    - PR を出す
-   - `make review`
-   - レビューコメントに1件ずつ対応する
+   - Codex にレビューさせる（PR に `@codex review` と投稿し、`make wait-codex` でレビューがつくまで待つ）
+   - レビューコメントに1件ずつ対応する（直したあとの再レビューは手元の Claude Code）
 3. **マージ**：PR の中身を見て、人がマージする。
 
 組織の設定で、`make` や `git push` を実行するたびに確認を求められる。その場で答える。
@@ -77,6 +77,8 @@ Issue 1件を、Claude Code と対話しながら次の順に進める。全自�
 | `make lint` | Swift のファイルが規則に合っているか調べる |
 | `make test` | `LocalTodo.xcodeproj` を生成し直してから単体テストを実行する |
 | `make generate` | `project.yml` から `LocalTodo.xcodeproj` を生成する |
+| `make wait-codex PR=<PR>` | PR に `@codex review` と投稿したあと、Codex のレビューがつくまで待つ |
+| `make re-review COMMENT=<コメント>` | レビューコメント1件への修正を、手元の Claude Code に再レビューさせる |
 
 ## データの場所とバックアップ
 

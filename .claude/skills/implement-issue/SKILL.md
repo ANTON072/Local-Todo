@@ -1,18 +1,18 @@
 ---
 name: implement-issue
-description: GitHub の Issue 1件を実装する。テストは実装より先に test-writer エージェントに別の worktree で書かせ、その間に実装を進め、make check を通して PR を出し、make review でレビューさせ、レビューコメントに対応するまでを行う。「この Issue を実装して <URL>」「Issue #<番号> を実装して」のように、実装する Issue を渡されたときに使う。
+description: GitHub の Issue 1件を実装する。テストは実装より先に test-writer エージェントに別の worktree で書かせ、その間に実装を進め、make check を通して PR を出し、Codex にレビューさせ、レビューコメントに対応するまでを行う。「この Issue を実装して <URL>」「Issue #<番号> を実装して」のように、実装する Issue を渡されたときに使う。
 ---
 
 # Issue の実装
 
-Issue 1件を、ブランチを切るところから、レビューコメントへの対応を終えるところまで進める。マージは人がする。このスキルを呼ばれたこと自体を、ブランチの作成・コミット・push・PR の作成・`make review` の実行・レビューコメントへの対応（返信と resolve を含む）の依頼として扱う。
+Issue 1件を、ブランチを切るところから、レビューコメントへの対応を終えるところまで進める。マージは人がする。このスキルを呼ばれたこと自体を、ブランチの作成・コミット・push・PR の作成・`@codex review` の投稿・レビューコメントへの対応（返信と resolve を含む）の依頼として扱う。
 
 ## なぜこの手順にするか
 
 - **テストを別のエージェントに、実装より先に書かせる**：実装したのと同じセッションでテストを書くと、実装を知っているために「このコードが通るケース」を書いてしまい、実装の見落としをテストも一緒に見落とす。
 - **test-writer は別の worktree で動かす**：同じ作業ツリーだと、書きかけの実装を読んでしまうおそれがある。指示に頼らず、見えないようにする。
 - **渡すのは Issue の番号だけ**：プロンプトに実装の案などを書くと、そこから実装の文脈が漏れる。Issue と決めごとは test-writer が自分で読む。
-- **PR 全体のレビュー（`make review`）は1つの PR につき1回だけ**：レビュアーは別のプロセスで動くが、呼ぶのはこのセッションなので、気に入らないレビューをやり直せてしまう。それを決まりで防ぐ。直したあとの確かめは、コメントごとの `make re-review` に任せる（docs/adr/0006-one-skill-from-implementation-to-review.md）。
+- **PR 全体のレビュー（`@codex review` の投稿）は1つの PR につき1回だけ**：レビュアー（Codex）は別のところで動くが、呼ぶのはこのセッションなので、気に入らないレビューをやり直せてしまう。Codex の費用もかさむ。それを決まりで防ぐ。直したあとの確かめは、コメントごとの `make re-review`（手元の Claude Code）に任せる（docs/adr/0006-one-skill-from-implementation-to-review.md、docs/adr/0012-first-review-by-codex.md）。
 
 ## 1. ブランチを切る
 
@@ -106,7 +106,7 @@ make check
 - 変えたファイルだけを `git add` してコミットする。`git add -A` や `git add .` は使わない。test-writer の worktree はリポジトリの中（`.claude/worktrees/…`）に作られる。.gitignore に入れてあるが、まとめて追加すると、入れ忘れたときなどに埋め込みリポジトリとしてコミットされてしまう。
 - メッセージは日本語で、1行目に何をしたか、本文になぜそうしたかを書き、`Closes #<番号>` を入れる。末尾の署名は、セッションの指示に従う。
 - `git push -u origin <ブランチ>` のあと、`gh pr create` で PR を出す。本文には次を書く。
-  - `Closes #<番号>`（1行目）。GitHub は、PR がどの Issue を閉じるか（`closingIssuesReferences`）を PR の本文から読む。コミットメッセージに書くだけでは読まれず、`make review` もこれで Issue を見つけるため
+  - `Closes #<番号>`（1行目）。GitHub は、PR がどの Issue を閉じるか（`closingIssuesReferences`）を PR の本文から読む。コミットメッセージに書くだけでは読まれないため
   - やったこと
   - テストを書いたのは test-writer であること。テストの対象がなければ「テストの対象なし」
   - テストの名前を直したときは、何をどう直したか（code-reviewer が、ケースや期待値を変えていないか確かめられるように）
@@ -119,12 +119,17 @@ make check
 
 ## 9. レビューさせる
 
+PR のコメントに `@codex review` と投稿し、Codex のレビューがつくまで待つ。
+
 ```bash
-make review PR=<PR の URL>
+gh pr comment <PR の番号> --body "@codex review"
+make wait-codex PR=<PR の URL>
 ```
 
-- 1つの PR につき1回だけ呼ぶ（「なぜこの手順にするか」）。もう一度呼んでよいのは、失敗してレビューが投稿されなかったときだけ。
-- 指摘が0件なら、11 に進む。
+- `@codex review` は1つの PR につき1回だけ投稿する（「なぜこの手順にするか」）。もう一度投稿してよいのは、Codex がレビューを返さなかったときに、ユーザーが頼んだ場合だけ。
+- `make wait-codex` は、約15分までレビューを待つ。結果の1行目が「指摘あり」か「指摘なし」になる。
+- 時間切れで失敗したときと、Codex が使えないとき（利用上限など）は、止まってユーザーに聞く。手元の Claude Code に代わりにレビューさせる手段は持たない（docs/adr/0012-first-review-by-codex.md）。
+- 結果が「指摘なし」で、スレッドにならない本文・通常コメントも指摘を含まなければ、11 に進む。
 
 ## 10. レビューに対応する
 
@@ -133,12 +138,11 @@ make review PR=<PR の URL>
 - 未解決のスレッドの、最初のコメントの URL を出す：`make unresolved PR=<PR の URL>`
 - 1件ずつ、Skill ツールで address-review-comment を呼び、その手順を最後まで回してから次に進む。直さないと決めたコメントの扱いも、address-review-comment の手順に従う。
 
-### 差分の外の指摘
+### スレッドにならなかった Codex の通常コメント
 
-`make review` は、差分に含まれない行への指摘をスレッドにできないので、レビュー本文の「差分の外の指摘」に書く。スレッドがないので、address-review-comment では扱えない。
+レビューの本文や通常コメントの指摘は、スレッドがないので、address-review-comment では扱えない。`make wait-codex` が、その本文を出力する。
 
-- レビュー本文を読む：`gh pr view <PR の番号> --json reviews --jq '.reviews | map(select(.body | startswith("Claude Code（code-reviewer）のレビュー"))) | last | .body'`
-- 「差分の外の指摘」があれば、1件ずつユーザーに見せ、直すかどうかを聞く。
+- 出力された本文に指摘があれば、1件ずつユーザーに見せ、直すかどうかを聞く。
 - 直すと決めたものは、address-review-comment の 2・4〜6 と同じ流れ（直す → `make check` → コミット → push）で片づける。スレッドがないので、`make re-review` と `make resolve` は使わない。
 - 直したら、どの指摘をどのコミットで直したかを、PR へのコメントで知らせる：`gh pr comment <PR の番号> --body-file <ファイル>`
 
@@ -153,5 +157,5 @@ make review PR=<PR の URL>
 - テストの名前を直したか、直したなら何を
 - make check の結果（テストの件数）
 - PR の URL
-- レビューの指摘の件数と、それぞれをどうしたか（resolve した／直さずに残した／差分の外の指摘を直した）
+- Codex のレビューの指摘の件数と、それぞれをどうしたか（resolve した／直さずに残した／通常コメントの指摘を直した）
 - 残っている未解決のスレッドがあれば、その URL

@@ -1,4 +1,4 @@
-.PHONY: format lint test check generate review re-review resolve comment reply unresolved
+.PHONY: format lint test check generate wait-codex re-review resolve comment reply unresolved
 
 SWIFT_DIRS := LocalTodo LocalTodoTests
 
@@ -25,10 +25,10 @@ check:
 generate:
 	xcodegen generate
 
-# PR 全体を手元の Claude Code（code-reviewer）にレビューさせ、指摘を PR の行につけて投稿する。
+# PR に「@codex review」と投稿したあと、Codex のレビューがつくまで待つ。
 # PR には URL か番号を渡す。
-review:
-	@scripts/review.sh "$(PR)"
+wait-codex:
+	@scripts/wait-codex.sh "$(PR)"
 
 # レビューコメント1件に対するコミット前の修正を、手元の Claude Code（code-reviewer）で再レビューする。
 # COMMENT にはコメントの URL か ID を渡す。
