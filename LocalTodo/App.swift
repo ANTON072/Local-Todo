@@ -6,6 +6,7 @@ struct LocalTodoApp: App {
     @State private var store: TodoStore
     @State private var undoRouter = UndoRouter()
     @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
+    @FocusedValue(\.selectedTitleLink) private var selectedTitleLink
 
     init() {
         let directory: URL
@@ -44,6 +45,14 @@ struct LocalTodoApp: App {
                 }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!canRedo)
+            }
+            CommandGroup(after: .newItem) {
+                // 選んだ行にタイトルのリンクがあるときだけ押せる（ContentView が選択に合わせて渡す）
+                Button("タイトルのリンクを開く") {
+                    if let selectedTitleLink { NSWorkspace.shared.open(selectedTitleLink) }
+                }
+                .keyboardShortcut("o", modifiers: .command)
+                .disabled(selectedTitleLink == nil)
             }
             CommandGroup(after: .sidebar) {
                 Button(showsDetailPane ? "詳細ペインを隠す" : "詳細ペインを表示") {
@@ -88,6 +97,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// 選んでいる行のタイトルのリンク（開けるものだけ）。⌘O のメニューが押せるかを決めるのに使う。
+private struct SelectedTitleLinkKey: FocusedValueKey {
+    typealias Value = URL
+}
+
+extension FocusedValues {
+    fileprivate var selectedTitleLink: URL? {
+        get { self[SelectedTitleLinkKey.self] }
+        set { self[SelectedTitleLinkKey.self] = newValue }
+    }
+}
+
 enum DetailPane {
     /// 詳細ペインの表示／非表示を `@AppStorage` で保つキー。初めて起動したときは表示する。
     static let storageKey = "showsDetailPane"
@@ -108,6 +129,10 @@ private struct ContentView: View {
     @AppStorage(ViewState.sortOrderKey) private var storedSortOrder = ""
     @State private var selection: Todo.ID?
     @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
+
+    private var selectedTitleLink: URL? {
+        store.todos.first { $0.id == selection }?.openableTitleURL
+    }
 
     private var listKind: Binding<TodoListKind> {
         Binding(
@@ -167,6 +192,7 @@ private struct ContentView: View {
                 .help("詳細ペインを表示／隠す（⌥⌘I）")
             }
         }
+        .focusedSceneValue(\.selectedTitleLink, selectedTitleLink)
         .frame(minWidth: 800, minHeight: 500)
         // フォーカスの場所が変わったことを、⌘Z をどこへ渡すかの判断に反映する
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didUpdateNotification)) { _ in

@@ -32,17 +32,24 @@ private struct TodoForm: View {
     let todo: Todo
 
     @State private var titleDraft: String
+    @State private var linkDraft: String
+    /// リンク欄に最後に合わせた（初期値・確定・取り消しの反映）文字列。`linkDraft` と違えば、打った（未確定）。
+    @State private var linkBase: String
     @FocusState private var isTitleFocused: Bool
+    @FocusState private var isLinkFocused: Bool
 
     init(store: TodoStore, todo: Todo) {
         self.store = store
         self.todo = todo
         _titleDraft = State(initialValue: todo.title)
+        _linkDraft = State(initialValue: todo.titleURL?.absoluteString ?? "")
+        _linkBase = State(initialValue: todo.titleURL?.absoluteString ?? "")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             field("タイトル") { titleField }
+            field("タイトルのリンク") { linkField }
             field("期限日") { DueDateField(store: store, todo: todo) }
             field("ディスクリプション", fillsHeight: true) { descriptionField }
         }
@@ -52,12 +59,20 @@ private struct TodoForm: View {
         .onChange(of: todo.title) {
             if !isTitleFocused { titleDraft = todo.title }
         }
+        // タイトルの確定や取り消し・やり直しでリンクが変わったとき、打っていなければ欄の表示も合わせる
+        .onChange(of: todo.titleURL) {
+            if !isLinkEdited { syncLinkDraft() }
+        }
         // 一覧で別の Todo を選んだとき、詳細ペインを隠したときも、フォーカスが外れたとみなして確定する
-        .onDisappear { commitTitle() }
+        .onDisappear {
+            commitTitle()
+            commitLink()
+        }
         // ⌘Q で終了するときは onDisappear もフォーカスの変化も確実には起きない。
         // App 側の終了時の保存（saveNow）と通知を受ける順が決まっていないので、確定したあと自分でも書き切る
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             commitTitle()
+            commitLink()
             store.saveNow()
         }
     }
@@ -104,6 +119,50 @@ private struct TodoForm: View {
             }
     }
 
+    /// タイトルのリンクの欄。URL を貼る・書き換える・消せる。確定はフォーカスが外れたときと ⌘Enter。
+    /// `http(s)://` で始まる URL でなければ確定せず、欄を今の値に戻す。空にして確定するとリンクを外す。
+    private var linkField: some View {
+        HStack(spacing: 6) {
+            TextField("", text: $linkDraft, prompt: Text("https://…"))
+                .textFieldStyle(.plain)
+                .focused($isLinkFocused)
+                .padding(8)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(
+                            isLinkFocused ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: 1)
+                }
+                .onChange(of: isLinkFocused) {
+                    if !isLinkFocused { commitLink() }
+                }
+                // フォーカスが入ったとき、欄の表示が古ければ（タイトルの確定でリンクが変わっていたとき）合わせる
+                .onChange(of: isLinkFocused) {
+                    if isLinkFocused, !isLinkEdited { syncLinkDraft() }
+                }
+                .onKeyPress(.return, phases: .down) { press in
+                    guard !isComposingText else { return .ignored }
+                    if press.modifiers.contains(.command) { commitLink() }
+                    return .handled
+                }
+                .onKeyPress(.escape, phases: .down) { _ in
+                    guard !isComposingText else { return .ignored }
+                    syncLinkDraft()
+                    return .handled
+                }
+            if let url = todo.openableTitleURL {
+                Button {
+                    NSWorkspace.shared.open(url)
+                } label: {
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .buttonStyle(.plain)
+                .help("ブラウザで開く")
+                .accessibilityLabel("リンクを開く")
+            }
+        }
+    }
+
     private var descriptionField: some View {
         TextEditor(text: descriptionBinding)
             .font(.body)
@@ -141,6 +200,28 @@ private struct TodoForm: View {
     /// 確定した結果（整えたあとの文字列）を欄に戻す。空で確定できなかったときは元のタイトルに戻る。
     private func commitTitle() {
         titleDraft = store.commitTitle(id: todo.id, text: titleDraft)
+    }
+
+    /// リンク欄に打った（未確定の）文字があるか。
+    private var isLinkEdited: Bool {
+        linkDraft != linkBase
+    }
+
+    /// 欄を今のリンクに合わせる。
+    private func syncLinkDraft() {
+        let current = todo.titleURL?.absoluteString ?? ""
+        linkDraft = current
+        linkBase = current
+    }
+
+    /// 打った文字を確定し、結果を欄に戻す。URL でなかったときは、今のリンクに戻る。
+    /// 打っていないときは何もしない。タイトルの確定でリンクが変わったあとに、古い表示で上書きしないため
+    /// （⌘Q や詳細ペインを閉じるときは、タイトルの確定のすぐあとにここが呼ばれ、欄の表示はまだ古い）。
+    private func commitLink() {
+        guard isLinkEdited else { return }
+        let shown = store.commitTitleURL(id: todo.id, text: linkDraft)
+        linkDraft = shown
+        linkBase = shown
     }
 
     /// 日本語入力で変換中（未確定の文字がある）か。変換中の Enter・Esc は、入力欄に任せる。

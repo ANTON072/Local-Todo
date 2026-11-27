@@ -180,17 +180,6 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertEqual(store.inboxTodos.map(\.title), ["a"])
     }
 
-    func testAddDoesNotLinkURL() throws {
-        let store = makeStore()
-
-        let added = try XCTUnwrap(store.add(title: "https://example.com/plan"))
-
-        // URL のリンク化は #22 でする
-        XCTAssertEqual(added.title, "https://example.com/plan")
-        XCTAssertNil(added.titleURL)
-        XCTAssertTrue(added.links.isEmpty)
-    }
-
     func testAddGivesEachTodoItsOwnID() throws {
         let store = makeStore()
 

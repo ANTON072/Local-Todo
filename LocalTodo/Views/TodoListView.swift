@@ -97,6 +97,13 @@ struct TodoListView: View {
         .listRowSeparator(.hidden)
         .listRowBackground(card(isSelected: todo.id == selection, showsPastDueBar: emphasis == .pastDue))
         .background(SelectionHighlightRemover())
+        // ダブルクリックでリンクを開く。単なるクリック（選択）の邪魔をしないよう、同時に受ける。
+        // ⌘クリックは複数選択に使うので、リンクを開く操作には使わない
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                if let url = todo.openableTitleURL { NSWorkspace.shared.open(url) }
+            }
+        )
         .contextMenu {
             // 右クリックした行だけを削除する（選択は変えない）
             if kind == .inbox {

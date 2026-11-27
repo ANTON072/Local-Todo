@@ -48,6 +48,12 @@ struct Todo: Codable, Identifiable, Hashable {
         return result
     }
 
+    /// タイトルのリンクのうち、ブラウザに渡してよいもの（`http`・`https`）。
+    /// 保存されていた値が別のスキームでも、開かない。
+    var openableTitleURL: URL? {
+        titleURL.flatMap { LinkTitleFetcher.isOpenable($0) ? $0 : nil }
+    }
+
     /// 完了日時があればアーカイブ、なければ Inbox。
     var isArchived: Bool {
         completedAt != nil

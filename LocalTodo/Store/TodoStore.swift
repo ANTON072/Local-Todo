@@ -148,8 +148,8 @@ final class TodoStore {
     /// - Returns: 追加した Todo。除いたあと（タグを取り除いたあとも）に空なら追加せず nil を返す。
     @discardableResult
     func add(title: String) -> Todo? {
-        guard let parsed = titleAndTags(from: title) else { return nil }
-        let todo = Todo(title: parsed.title, tags: parsed.tags, createdAt: now())
+        guard let parsed = titleParts(from: title) else { return nil }
+        let todo = Todo(title: parsed.title, titleURL: parsed.link, tags: parsed.tags, createdAt: now())
         todos.append(todo)
         save()
         recordUndo("追加", [.add(todo, at: todos.count - 1)])
@@ -159,38 +159,50 @@ final class TodoStore {
     /// 詳細ペインのタイトル欄に打たれた文字列を、`add(title:)` と同じ整え方でタイトルにする。
     /// 整えたあとが空なら確定しない（空のタイトルの Todo は一覧で見えなくなるため）。
     /// タイトルの `#タグ` は取り除き、その Todo がすでに持つタグの後ろに足す（置き換えない）。
-    /// 整えたあとのタイトルが今と同じで、足すタグもないなら、置き換えも保存もしない
+    /// タイトルに URL があれば、タイトルのリンクをその URL に置き換える（なければ今のリンクのまま）。
+    /// 整えたあとのタイトルが今と同じで、足すタグもなく、リンクも変わらないなら、置き換えも保存もしない
     /// （フォーカスが外れるたびに呼ばれるので、何も変えていない操作で保存や取り消しの履歴を増やさない）。
     /// - Returns: 欄に出す文字列。確定したら新しいタイトル、確定しなかったら今のタイトル。
     ///   ID の Todo がなければ何も変えず、整えた文字列（空なら空文字列）を返す。
     @discardableResult
     func commitTitle(id: Todo.ID, text: String) -> String {
-        let parsed = titleAndTags(from: text)
+        let parsed = titleParts(from: text)
         guard let index = todos.firstIndex(where: { $0.id == id }) else { return parsed?.title ?? "" }
         let current = todos[index].title
+        // 何も編集していない（整えたあとが今のタイトルと同じ）なら、何もしない。
+        // 抽出し直すと、タイトルに残した2つ目の URL が、リンクを置き換えてしまうため
+        // （全体が URL のタイトルは、リンク欄で外したリンクが復活してしまう）。
+        guard Self.normalizedTitle(text) != current else { return current }
         guard let parsed else { return current }
         let tags =
             todos[index].tags
             + parsed.tags.filter { new in
                 !todos[index].tags.contains { TagParser.isSameTag($0, new) }
             }
-        guard parsed.title != current || tags != todos[index].tags else { return current }
+        let link = parsed.link ?? todos[index].titleURL
+        guard parsed.title != current || tags != todos[index].tags || link != todos[index].titleURL else {
+            return current
+        }
         let before = todos[index]
         todos[index].title = parsed.title
         todos[index].tags = tags
+        todos[index].titleURL = link
         save()
         recordUndo("タイトルの編集", [.edit(before: before, after: todos[index])])
         return parsed.title
     }
 
-    /// 入力された文字列を、タイトルと、そこから取り出したタグにする。
-    /// タイトルは `normalizedTitle` で整えたあと、`TagParser` で `#タグ` を取り除く。
+    /// 入力された文字列を、タイトルと、そこから取り出したタグ・タイトルのリンクにする。
+    /// タイトルは `normalizedTitle` で整えたあと、`TagParser` で `#タグ` を、続けて
+    /// `LinkTitleFetcher` で URL を取り除く。タグを先に取るのは、`https://x.com #仕事` のように、
+    /// タグを取ったあとが「タイトル全体が URL」になる入力を、追加できるようにするため
+    /// （URL を先に取ると、残りがタグだけになってタイトルが空になる）。
     /// 取り除いたあとのタイトルが空なら nil（空のタイトルの Todo は一覧で見えないため）。
     ///
     /// タグは、全 Todo（アーカイブも含む）にすでにある同じタグの書き方にそろえる。
     /// 複数の書き方があれば、配列で先にある Todo の書き方にする。1回の入力の中の重複は、
     /// 最初に出た書き方を残す。
-    private func titleAndTags(from text: String) -> (title: String, tags: [String])? {
+    private func titleParts(from text: String) -> (title: String, tags: [String], link: URL?)? {
         guard let normalized = Self.normalizedTitle(text) else { return nil }
         let parsed = TagParser.parse(normalized)
         guard !parsed.title.isEmpty else { return nil }
@@ -201,7 +213,40 @@ final class TodoStore {
             if !known.contains(canonical) { known.append(canonical) }
             if !tags.contains(where: { TagParser.isSameTag($0, canonical) }) { tags.append(canonical) }
         }
-        return (parsed.title, tags)
+        let extracted = LinkTitleFetcher.extract(from: parsed.title)
+        return (extracted.title, tags, extracted.url)
+    }
+
+    // MARK: - タイトルのリンク
+
+    /// 取り消しのメニューに出す、タイトルのリンクの変更の名前。
+    static let titleLinkActionName = "リンクの編集"
+
+    /// 詳細ペインのリンク欄に書かれた文字列で、タイトルのリンクを変える。
+    /// - 空（空白だけも）：リンクを外す。
+    /// - `http(s)://` の URL：リンクをその URL にする。
+    /// - それ以外：何も変えない。
+    /// 変わらなければ、保存も取り消しの履歴もしない。1回の変更を1件の取り消しにする。
+    /// - Returns: 欄に出す文字列。変えたら新しいリンク（外したら空）、変えなかったら今のリンク。
+    @discardableResult
+    func commitTitleURL(id: Todo.ID, text: String) -> String {
+        guard let index = todos.firstIndex(where: { $0.id == id }) else { return "" }
+        let current = todos[index].titleURL
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let new: URL?
+        if trimmed.isEmpty {
+            new = nil
+        } else if let url = LinkTitleFetcher.parseLinkField(trimmed) {
+            new = url
+        } else {
+            return current?.absoluteString ?? ""
+        }
+        guard new != current else { return current?.absoluteString ?? "" }
+        let before = todos[index]
+        todos[index].titleURL = new
+        save()
+        recordUndo(Self.titleLinkActionName, [.edit(before: before, after: todos[index])])
+        return new?.absoluteString ?? ""
     }
 
     /// 前後の空白と改行を除き、途中の改行（続いたものは1つにまとめて）を半角スペースにする。空なら nil。
