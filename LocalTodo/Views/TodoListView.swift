@@ -4,6 +4,8 @@ struct TodoListView: View {
     let store: TodoStore
     let undoRouter: UndoRouter
     let kind: TodoListKind
+    /// Inbox の並び順。アーカイブでは使わない。
+    let sortOrder: InboxSortOrder
 
     @Binding var selection: Todo.ID?
 
@@ -19,7 +21,7 @@ struct TodoListView: View {
                     .padding(12)
             }
             List(selection: $selection) {
-                if kind == .inbox {
+                if showsHeadings {
                     ForEach(store.inboxSections(now: .now)) { section in
                         Section {
                             if !collapsedHeadings.contains(section.heading) {
@@ -30,7 +32,7 @@ struct TodoListView: View {
                         }
                     }
                 } else {
-                    ForEach(kind.todos(in: store)) { todo in row(todo) }
+                    ForEach(kind.todos(in: store, order: sortOrder)) { todo in row(todo) }
                 }
             }
             .listStyle(.inset)
@@ -48,7 +50,7 @@ struct TodoListView: View {
             selection = nil
         }
         // 確定でこの一覧から消えた行を選んでいたら、選択を外す
-        .onChange(of: kind.todos(in: store).map(\.id)) { _, ids in
+        .onChange(of: kind.todos(in: store, order: sortOrder).map(\.id)) { _, ids in
             if let selection, !ids.contains(selection) { self.selection = nil }
         }
         // 操作の結果で Todo が畳んだ見出しに入った（追加・期限日の変更・取り消し・やり直しなど）ときは、
@@ -67,6 +69,11 @@ struct TodoListView: View {
         // 新規入力欄が空でフォーカスされているあいだ、⌘Z は TodoStore の取り消しに渡す（UndoRouter）
         .onChange(of: isInputFocused) { updateRouter() }
         .onChange(of: inputText) { updateRouter() }
+    }
+
+    /// 見出しは、Inbox を期限日順で並べているときだけ出す。
+    private var showsHeadings: Bool {
+        kind == .inbox && sortOrder == .dueDate
     }
 
     private func row(_ todo: Todo) -> some View {
@@ -147,7 +154,7 @@ struct TodoListView: View {
     }
 
     private var headingSnapshot: HeadingSnapshot {
-        guard kind == .inbox else { return HeadingSnapshot(isInbox: false, headings: [:]) }
+        guard showsHeadings else { return HeadingSnapshot(isInbox: false, headings: [:]) }
         var headings: [Todo.ID: DueHeading] = [:]
         for section in store.inboxSections(now: .now) {
             for todo in section.todos { headings[todo.id] = section.heading }

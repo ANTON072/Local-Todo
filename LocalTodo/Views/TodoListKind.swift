@@ -3,6 +3,19 @@ enum TodoListKind: Hashable, CaseIterable {
     case inbox
     case archive
 
+    /// `@AppStorage` に保存する文字列。
+    var storedValue: String {
+        switch self {
+        case .inbox: "inbox"
+        case .archive: "archive"
+        }
+    }
+
+    /// 起動時に保存値から戻す。空や未知の値（初回起動など）は Inbox にする。
+    init(storedValue: String) {
+        self = Self.allCases.first { $0.storedValue == storedValue } ?? .inbox
+    }
+
     var title: String {
         switch self {
         case .inbox: "Inbox"
@@ -22,9 +35,9 @@ enum TodoListKind: Hashable, CaseIterable {
         self == .inbox
     }
 
-    func todos(in store: TodoStore) -> [Todo] {
+    func todos(in store: TodoStore, order: InboxSortOrder = .dueDate) -> [Todo] {
         switch self {
-        case .inbox: store.inboxTodos
+        case .inbox: store.inboxTodos(order: order)
         case .archive: store.archivedTodos
         }
     }

@@ -824,6 +824,88 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertEqual(sections.map { $0.todos.map(\.title) }, [["一昨日", "昨日"], ["明日", "明後日"]])
     }
 
+    // MARK: - 作成日順
+
+    func testCreatedAtOrderSortsByNewestCreatedAt() throws {
+        // ファイルの順と作成日時の順を入れ替えておく
+        try writeFile([
+            Todo(title: "古い", createdAt: try date(2026, 11, 23, 9, 0, 0)),
+            Todo(title: "新しい", createdAt: try date(2026, 11, 24, 9, 0, 0)),
+            Todo(title: "いちばん古い", createdAt: try date(2026, 11, 22, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos(order: .createdAt).map(\.title), ["新しい", "古い", "いちばん古い"])
+    }
+
+    func testCreatedAtOrderIgnoresDueDateEarlierOrLater() throws {
+        // 期限日の早い順なら「期限が早い・古い」が先になるところを、作成日の新しい順にする
+        try writeFile([
+            Todo(title: "期限が早い・古い", dueDate: try day(2026, 11, 26), createdAt: try date(2026, 11, 1, 9, 0, 0)),
+            Todo(title: "期限が遅い・新しい", dueDate: try day(2026, 12, 1), createdAt: try date(2026, 11, 20, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos(order: .createdAt).map(\.title), ["期限が遅い・新しい", "期限が早い・古い"])
+    }
+
+    func testCreatedAtOrderIgnoresPresenceOfDueDate() throws {
+        try writeFile([
+            Todo(title: "期限あり・古い", dueDate: try day(2026, 11, 26), createdAt: try date(2026, 11, 1, 9, 0, 0)),
+            Todo(title: "期限なし・新しい", createdAt: try date(2026, 11, 20, 9, 0, 0)),
+            Todo(title: "期限あり・中間", dueDate: try day(2026, 11, 24), createdAt: try date(2026, 11, 10, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(
+            store.inboxTodos(order: .createdAt).map(\.title), ["期限なし・新しい", "期限あり・中間", "期限あり・古い"])
+    }
+
+    func testCreatedAtOrderPutsLaterInArrayFirstWhenCreatedAtIsSame() throws {
+        let createdAt = try date(2026, 11, 24, 9, 0, 0)
+        try writeFile([
+            Todo(title: "1番目", dueDate: try day(2026, 11, 24), createdAt: createdAt),
+            Todo(title: "2番目", createdAt: createdAt),
+            Todo(title: "3番目", dueDate: try day(2026, 12, 1), createdAt: createdAt),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos(order: .createdAt).map(\.title), ["3番目", "2番目", "1番目"])
+    }
+
+    func testCreatedAtOrderExcludesArchivedTodos() throws {
+        try writeFile([
+            Todo(title: "Inbox", createdAt: try date(2026, 11, 22, 9, 0, 0)),
+            Todo(
+                title: "アーカイブ", createdAt: try date(2026, 11, 23, 9, 0, 0),
+                completedAt: try date(2026, 11, 24, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos(order: .createdAt).map(\.title), ["Inbox"])
+    }
+
+    func testCreatedAtOrderIsEmptyWhenStoreIsEmpty() {
+        XCTAssertTrue(makeTokyoStore().inboxTodos(order: .createdAt).isEmpty)
+    }
+
+    func testDueDateOrderParameterMatchesInboxTodos() throws {
+        try writeFile([
+            Todo(title: "期限が遅い・新しい", dueDate: try day(2026, 12, 1), createdAt: try date(2026, 11, 20, 9, 0, 0)),
+            Todo(title: "期限なし", createdAt: try date(2026, 11, 25, 9, 0, 0)),
+            Todo(title: "期限が早い・古い", dueDate: try day(2026, 11, 26), createdAt: try date(2026, 11, 1, 9, 0, 0)),
+        ])
+
+        let store = makeTokyoStore()
+
+        XCTAssertEqual(store.inboxTodos(order: .dueDate), store.inboxTodos)
+    }
+
     // MARK: - ヘルパー
 
     /// 期限日の見出しのテスト用。「今日」を決めるカレンダーを Asia/Tokyo にしたストア。
