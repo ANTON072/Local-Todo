@@ -33,11 +33,28 @@ struct TodoRowView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isChecked ? "未完了に戻す" : "完了にする")
             VStack(alignment: .leading, spacing: 2) {
-                Text(todo.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .strikethrough(isChecked)
-                    .foregroundStyle(isChecked ? .secondary : .primary)
+                HStack(spacing: 4) {
+                    Text(todo.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .strikethrough(isChecked)
+                        .foregroundStyle(isChecked ? .secondary : .primary)
+                    if let url = todo.openableTitleURL {
+                        // 長いタイトルが「…」で切れても、↗ は残す。普通のクリックは行の選択で、
+                        // リンクは ↗・ダブルクリック・⌘O で開く
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        .fixedSize()
+                        .help("ブラウザで開く")
+                        .accessibilityLabel("リンクを開く")
+                    }
+                }
                 let dueText = todo.dueDateRowText(now: .now, calendar: .current)
                 if dueText != nil || !todo.tags.isEmpty {
                     // 期限日のあとに、タグのチップを続ける。1行に収まらない分は右端で切る
