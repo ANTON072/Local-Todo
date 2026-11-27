@@ -97,6 +97,18 @@ final class TagParserTests: XCTestCase {
         XCTAssertFalse(TagParser.isSameTag("CAFÉ", "café"))
     }
 
+    func testIsSameTagTreatsComposedAndDecomposedAccentAsSame() {
+        // É（合成済み）と E + U+0301（分解済み）は同じ文字
+        XCTAssertTrue(TagParser.isSameTag("CAFÉ", "CAFE\u{301}"))
+        XCTAssertTrue(TagParser.isSameTag("café", "cafe\u{301}"))
+    }
+
+    func testIsSameTagDistinguishesAccentedCaseInDecomposedForm() {
+        // 分解済みでも、アクセント付きの大文字・小文字は別
+        XCTAssertFalse(TagParser.isSameTag("E\u{301}", "e\u{301}"))
+        XCTAssertFalse(TagParser.isSameTag("CAFE\u{301}", "cafe\u{301}"))
+    }
+
     func testIsSameTagDistinguishesFullWidthFromHalfWidth() {
         XCTAssertFalse(TagParser.isSameTag("ＡＢＣ", "ABC"))
     }

@@ -77,7 +77,10 @@ enum TagParser {
 
     private static func foldASCIICase(_ text: String) -> String {
         var scalars = String.UnicodeScalarView()
-        for scalar in text.unicodeScalars {
+        // 合成済み（É）と分解済み（E + U+0301）で同じ文字でも、スカラーの並びが違う。
+        // 先に NFC にそろえないと、分解済みの `E` だけが小文字になり、アクセント付きの大文字・小文字が
+        // 別という規則や、Swift の文字列比較（正規等価なら等しい）と食い違う。
+        for scalar in text.precomposedStringWithCanonicalMapping.unicodeScalars {
             if scalar.value >= 0x41, scalar.value <= 0x5A, let lower = Unicode.Scalar(scalar.value + 0x20) {
                 scalars.append(lower)
             } else {
