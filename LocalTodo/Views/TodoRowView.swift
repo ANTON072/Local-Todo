@@ -60,7 +60,9 @@ struct TodoRowView: View {
                         }
                     }
                     .fixedSize(horizontal: true, vertical: false)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // 親から提案された幅を受け入れる領域（minWidth: 0）を作ってから切る。
+                    // 指定しないと、枠がチップ列の幅まで広がり、右端で切れず、行の幅にも響く
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .clipped()
                 }
             }
