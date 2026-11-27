@@ -93,33 +93,71 @@ enum DetailPane {
     static let storageKey = "showsDetailPane"
 }
 
+enum ViewState {
+    /// 選んでいた画面（`TodoListKind.storedValue`）を `@AppStorage` で保つキー。
+    static let listKindKey = "listKind"
+    /// Inbox の並び順（`InboxSortOrder.storedValue`）を `@AppStorage` で保つキー。
+    static let sortOrderKey = "inboxSortOrder"
+}
+
 private struct ContentView: View {
     let store: TodoStore
     let undoRouter: UndoRouter
-    @State private var listKind = TodoListKind.inbox
+    /// 選んでいた画面と Inbox の並び順。文字列で保存し、読めない値は既定値（Inbox・期限日順）にする。
+    @AppStorage(ViewState.listKindKey) private var storedListKind = ""
+    @AppStorage(ViewState.sortOrderKey) private var storedSortOrder = ""
     @State private var selection: Todo.ID?
     @AppStorage(DetailPane.storageKey) private var showsDetailPane = true
+
+    private var listKind: Binding<TodoListKind> {
+        Binding(
+            get: { TodoListKind(storedValue: storedListKind) },
+            set: { storedListKind = $0.storedValue }
+        )
+    }
+
+    private var sortOrder: Binding<InboxSortOrder> {
+        Binding(
+            get: { InboxSortOrder(storedValue: storedSortOrder) },
+            set: { storedSortOrder = $0.storedValue }
+        )
+    }
 
     var body: some View {
         // 詳細ペインは右だけを隠せるよう、3列目ではなく inspector にする（NavigationSplitView は右の列だけを隠せない）
         NavigationSplitView {
-            SidebarView(selection: $listKind)
+            SidebarView(selection: listKind)
         } detail: {
-            TodoListView(store: store, undoRouter: undoRouter, kind: listKind, selection: $selection)
-                .inspector(isPresented: $showsDetailPane) {
-                    Group {
-                        if let selection {
-                            // 選択が変わるたびに作り直し、打ちかけのタイトルを元の Todo に確定させる
-                            TodoDetailView(store: store, todoID: selection)
-                                .id(selection)
-                        } else {
-                            DetailPlaceholder()
-                        }
+            TodoListView(
+                store: store, undoRouter: undoRouter, kind: listKind.wrappedValue,
+                sortOrder: sortOrder.wrappedValue, selection: $selection
+            )
+            .inspector(isPresented: $showsDetailPane) {
+                Group {
+                    if let selection {
+                        // 選択が変わるたびに作り直し、打ちかけのタイトルを元の Todo に確定させる
+                        TodoDetailView(store: store, todoID: selection)
+                            .id(selection)
+                    } else {
+                        DetailPlaceholder()
                     }
-                    .inspectorColumnWidth(min: 260, ideal: 300, max: 500)
                 }
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 500)
+            }
         }
         .toolbar {
+            // アーカイブは完了日時の新しい順で固定なので、並び順の切り替えは Inbox のときだけ出す
+            if listKind.wrappedValue == .inbox {
+                ToolbarItem {
+                    Picker("並び順", selection: sortOrder) {
+                        ForEach(InboxSortOrder.allCases, id: \.self) { order in
+                            Text(order.title).tag(order)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Inbox の並び順を切り替える")
+                }
+            }
             ToolbarItem {
                 Button {
                     showsDetailPane.toggle()

@@ -89,19 +89,31 @@ final class TodoStore {
     /// 期限日の早い順。期限なしは末尾。同じ期限日の中は、作成日時の新しい順。
     /// 作成日時も同じなら、あとから加わったもの（配列で後ろにあるもの）を上にする。
     var inboxTodos: [Todo] {
-        todos.enumerated()
-            .filter { !$0.element.isArchived }
-            .sorted { lhs, rhs in
+        inboxTodos(order: .dueDate)
+    }
+
+    /// 並び順を指定した Inbox。作成日順は、期限日と関係なく作成日時の新しい順
+    /// （同じなら、あとから加わったものを上にする）。
+    func inboxTodos(order: InboxSortOrder) -> [Todo] {
+        let active = todos.enumerated().filter { !$0.element.isArchived }
+        switch order {
+        case .dueDate:
+            return active.sorted { lhs, rhs in
                 switch (lhs.element.dueDate, rhs.element.dueDate) {
                 case (let lhsDay?, let rhsDay?) where lhsDay != rhsDay: return lhsDay < rhsDay
                 case (.some, .none): return true
                 case (.none, .some): return false
-                default:
-                    let (lhsDate, rhsDate) = (lhs.element.createdAt, rhs.element.createdAt)
-                    return lhsDate != rhsDate ? lhsDate > rhsDate : lhs.offset > rhs.offset
+                default: return Self.isNewer(lhs, than: rhs)
                 }
-            }
-            .map(\.element)
+            }.map(\.element)
+        case .createdAt:
+            return active.sorted(by: Self.isNewer).map(\.element)
+        }
+    }
+
+    private static func isNewer(_ lhs: (offset: Int, element: Todo), than rhs: (offset: Int, element: Todo)) -> Bool {
+        let (lhsDate, rhsDate) = (lhs.element.createdAt, rhs.element.createdAt)
+        return lhsDate != rhsDate ? lhsDate > rhsDate : lhs.offset > rhs.offset
     }
 
     /// Inbox を見出しで区切ったもの。見出しは「期限切れ」「今日」「明日以降」「期限なし」の順で、
