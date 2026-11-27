@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PR についたレビューコメント1件に対して、コミット前の修正を、make review と同じ
+# PR についたレビューコメント1件に対して、コミット前の修正を、
 # 手元の Claude Code（.claude/agents/code-reviewer.md）に再レビューさせる。
 # セッションは毎回新しく作り、指摘1件と今回の差分だけを見せる。結果を表示するだけで、PR には何も書かない。
 # 使い方: scripts/re-review.sh <コメントの URL か ID>
