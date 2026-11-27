@@ -407,6 +407,35 @@ final class TodoStoreLinkTests: XCTestCase {
         XCTAssertEqual(store.todos.first?.titleURL, url("https://b.com"))
     }
 
+    // MARK: - 未編集のタイトルの確定（レビュー指摘）
+
+    func testCommitUneditedTitleWithLeftoverURLChangesNothing() throws {
+        // 2つ目の URL はタイトルに残る。何も編集せずに確定（フォーカスを外すだけ）しても、
+        // 残した URL を再抽出して、リンクを置き換えない
+        let store = try makeStore([])
+        let todo = try XCTUnwrap(store.add(title: "資料 https://a.com と https://b.com"))
+        XCTAssertEqual(todo.title, "資料 と https://b.com")
+
+        let shown = store.commitTitle(id: todo.id, text: todo.title)
+
+        XCTAssertEqual(store.todos.first?.title, "資料 と https://b.com")
+        XCTAssertEqual(store.todos.first?.titleURL, url("https://a.com"))
+        XCTAssertEqual(shown, "資料 と https://b.com")
+        XCTAssertEqual(store.undoActionName, "追加")
+    }
+
+    func testCommitUneditedWholeURLTitleDoesNotRestoreRemovedLink() throws {
+        // リンク欄でリンクを外したあと、未編集のタイトル（全体が URL）を確定しても、リンクは復活しない
+        let store = try makeStore([])
+        let todo = try XCTUnwrap(store.add(title: "https://a.com"))
+        store.commitTitleURL(id: todo.id, text: "")
+
+        store.commitTitle(id: todo.id, text: "https://a.com")
+
+        XCTAssertNil(store.todos.first?.titleURL)
+        XCTAssertEqual(store.undoActionName, "リンクの編集")
+    }
+
     // MARK: - ヘルパー
 
     private func makeStore(_ todos: [Todo]) throws -> TodoStore {

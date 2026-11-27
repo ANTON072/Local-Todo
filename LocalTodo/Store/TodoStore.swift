@@ -169,6 +169,10 @@ final class TodoStore {
         let parsed = titleParts(from: text)
         guard let index = todos.firstIndex(where: { $0.id == id }) else { return parsed?.title ?? "" }
         let current = todos[index].title
+        // 何も編集していない（整えたあとが今のタイトルと同じ）なら、何もしない。
+        // 抽出し直すと、タイトルに残した2つ目の URL が、リンクを置き換えてしまうため
+        // （全体が URL のタイトルは、リンク欄で外したリンクが復活してしまう）。
+        guard Self.normalizedTitle(text) != current else { return current }
         guard let parsed else { return current }
         let tags =
             todos[index].tags

@@ -33,6 +33,8 @@ private struct TodoForm: View {
 
     @State private var titleDraft: String
     @State private var linkDraft: String
+    /// リンク欄に最後に合わせた（初期値・確定・取り消しの反映）文字列。`linkDraft` と違えば、打った（未確定）。
+    @State private var linkBase: String
     @FocusState private var isTitleFocused: Bool
     @FocusState private var isLinkFocused: Bool
 
@@ -41,6 +43,7 @@ private struct TodoForm: View {
         self.todo = todo
         _titleDraft = State(initialValue: todo.title)
         _linkDraft = State(initialValue: todo.titleURL?.absoluteString ?? "")
+        _linkBase = State(initialValue: todo.titleURL?.absoluteString ?? "")
     }
 
     var body: some View {
@@ -58,7 +61,7 @@ private struct TodoForm: View {
         }
         // タイトルの確定や取り消し・やり直しでリンクが変わったとき、打っていなければ欄の表示も合わせる
         .onChange(of: todo.titleURL) {
-            if !isLinkFocused { linkDraft = todo.titleURL?.absoluteString ?? "" }
+            if !isLinkEdited { syncLinkDraft() }
         }
         // 一覧で別の Todo を選んだとき、詳細ペインを隠したときも、フォーカスが外れたとみなして確定する
         .onDisappear {
@@ -133,6 +136,10 @@ private struct TodoForm: View {
                 .onChange(of: isLinkFocused) {
                     if !isLinkFocused { commitLink() }
                 }
+                // フォーカスが入ったとき、欄の表示が古ければ（タイトルの確定でリンクが変わっていたとき）合わせる
+                .onChange(of: isLinkFocused) {
+                    if isLinkFocused, !isLinkEdited { syncLinkDraft() }
+                }
                 .onKeyPress(.return, phases: .down) { press in
                     guard !isComposingText else { return .ignored }
                     if press.modifiers.contains(.command) { commitLink() }
@@ -140,7 +147,7 @@ private struct TodoForm: View {
                 }
                 .onKeyPress(.escape, phases: .down) { _ in
                     guard !isComposingText else { return .ignored }
-                    linkDraft = todo.titleURL?.absoluteString ?? ""
+                    syncLinkDraft()
                     return .handled
                 }
             if let url = todo.openableTitleURL {
@@ -195,9 +202,26 @@ private struct TodoForm: View {
         titleDraft = store.commitTitle(id: todo.id, text: titleDraft)
     }
 
-    /// 確定した結果を欄に戻す。URL でなかったときは、今のリンクに戻る。
+    /// リンク欄に打った（未確定の）文字があるか。
+    private var isLinkEdited: Bool {
+        linkDraft != linkBase
+    }
+
+    /// 欄を今のリンクに合わせる。
+    private func syncLinkDraft() {
+        let current = todo.titleURL?.absoluteString ?? ""
+        linkDraft = current
+        linkBase = current
+    }
+
+    /// 打った文字を確定し、結果を欄に戻す。URL でなかったときは、今のリンクに戻る。
+    /// 打っていないときは何もしない。タイトルの確定でリンクが変わったあとに、古い表示で上書きしないため
+    /// （⌘Q や詳細ペインを閉じるときは、タイトルの確定のすぐあとにここが呼ばれ、欄の表示はまだ古い）。
     private func commitLink() {
-        linkDraft = store.commitTitleURL(id: todo.id, text: linkDraft)
+        guard isLinkEdited else { return }
+        let shown = store.commitTitleURL(id: todo.id, text: linkDraft)
+        linkDraft = shown
+        linkBase = shown
     }
 
     /// 日本語入力で変換中（未確定の文字がある）か。変換中の Enter・Esc は、入力欄に任せる。
