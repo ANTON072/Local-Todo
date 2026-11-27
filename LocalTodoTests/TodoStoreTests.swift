@@ -180,16 +180,6 @@ final class TodoStoreTests: XCTestCase {
         XCTAssertEqual(store.inboxTodos.map(\.title), ["a"])
     }
 
-    func testAddDoesNotExtractTags() throws {
-        let store = makeStore()
-
-        let added = try XCTUnwrap(store.add(title: "資料を作る #仕事"))
-
-        // タグの取り出しは #17 でする
-        XCTAssertEqual(added.title, "資料を作る #仕事")
-        XCTAssertTrue(added.tags.isEmpty)
-    }
-
     func testAddDoesNotLinkURL() throws {
         let store = makeStore()
 

@@ -144,11 +144,12 @@ final class TodoStore {
 
     /// タイトルの前後の空白（改行を含む）を除き、途中の改行を半角スペースにして追加する。
     /// 続いた改行（`\r\n` や空の行）は1つのスペースにまとめる。タイトルは1行で表示するため。
-    /// - Returns: 追加した Todo。除いたあとに空なら追加せず nil を返す。
+    /// タイトルの `#タグ` は取り除いてタグにする（`titleAndTags(from:)`）。
+    /// - Returns: 追加した Todo。除いたあと（タグを取り除いたあとも）に空なら追加せず nil を返す。
     @discardableResult
     func add(title: String) -> Todo? {
-        guard let normalized = Self.normalizedTitle(title) else { return nil }
-        let todo = Todo(title: normalized, createdAt: now())
+        guard let parsed = titleAndTags(from: title) else { return nil }
+        let todo = Todo(title: parsed.title, tags: parsed.tags, createdAt: now())
         todos.append(todo)
         save()
         recordUndo("追加", [.add(todo, at: todos.count - 1)])
@@ -157,22 +158,50 @@ final class TodoStore {
 
     /// 詳細ペインのタイトル欄に打たれた文字列を、`add(title:)` と同じ整え方でタイトルにする。
     /// 整えたあとが空なら確定しない（空のタイトルの Todo は一覧で見えなくなるため）。
-    /// 整えたあとが今のタイトルと同じなら、置き換えも保存もしない
+    /// タイトルの `#タグ` は取り除き、その Todo がすでに持つタグの後ろに足す（置き換えない）。
+    /// 整えたあとのタイトルが今と同じで、足すタグもないなら、置き換えも保存もしない
     /// （フォーカスが外れるたびに呼ばれるので、何も変えていない操作で保存や取り消しの履歴を増やさない）。
     /// - Returns: 欄に出す文字列。確定したら新しいタイトル、確定しなかったら今のタイトル。
     ///   ID の Todo がなければ何も変えず、整えた文字列（空なら空文字列）を返す。
     @discardableResult
     func commitTitle(id: Todo.ID, text: String) -> String {
-        guard let index = todos.firstIndex(where: { $0.id == id }) else {
-            return Self.normalizedTitle(text) ?? ""
-        }
+        let parsed = titleAndTags(from: text)
+        guard let index = todos.firstIndex(where: { $0.id == id }) else { return parsed?.title ?? "" }
         let current = todos[index].title
-        guard let normalized = Self.normalizedTitle(text), normalized != current else { return current }
+        guard let parsed else { return current }
+        let tags =
+            todos[index].tags
+            + parsed.tags.filter { new in
+                !todos[index].tags.contains { TagParser.isSameTag($0, new) }
+            }
+        guard parsed.title != current || tags != todos[index].tags else { return current }
         let before = todos[index]
-        todos[index].title = normalized
+        todos[index].title = parsed.title
+        todos[index].tags = tags
         save()
         recordUndo("タイトルの編集", [.edit(before: before, after: todos[index])])
-        return normalized
+        return parsed.title
+    }
+
+    /// 入力された文字列を、タイトルと、そこから取り出したタグにする。
+    /// タイトルは `normalizedTitle` で整えたあと、`TagParser` で `#タグ` を取り除く。
+    /// 取り除いたあとのタイトルが空なら nil（空のタイトルの Todo は一覧で見えないため）。
+    ///
+    /// タグは、全 Todo（アーカイブも含む）にすでにある同じタグの書き方にそろえる。
+    /// 複数の書き方があれば、配列で先にある Todo の書き方にする。1回の入力の中の重複は、
+    /// 最初に出た書き方を残す。
+    private func titleAndTags(from text: String) -> (title: String, tags: [String])? {
+        guard let normalized = Self.normalizedTitle(text) else { return nil }
+        let parsed = TagParser.parse(normalized)
+        guard !parsed.title.isEmpty else { return nil }
+        var known = todos.flatMap(\.tags)
+        var tags: [String] = []
+        for name in parsed.names {
+            let canonical = known.first { TagParser.isSameTag($0, name) } ?? name
+            if !known.contains(canonical) { known.append(canonical) }
+            if !tags.contains(where: { TagParser.isSameTag($0, canonical) }) { tags.append(canonical) }
+        }
+        return (parsed.title, tags)
     }
 
     /// 前後の空白と改行を除き、途中の改行（続いたものは1つにまとめて）を半角スペースにする。空なら nil。
