@@ -18,5 +18,5 @@ ADR-0003 の「初回のレビューを `make review` で手元の Claude Code �
 
 ## Consequences
 
-- Codex の投稿の形は、指摘があれば行コメントつきのレビュー、なければ通常コメントと想定している。`scripts/wait-codex.sh` の判定は、実際の投稿を確かめて合わせる。
+- Codex は PR に「Codex Review Summary」のコメントを1つ作り、レビューが終わるとその中の状態（`codex-review-state` の `status`・`commit_sha`・`has_any_findings`）を書き換える。`scripts/wait-codex.sh` はこの状態が今のコミットについて `completed` になるのを待つ。指摘がなければ、完了時に「Didn't find any major issues」という受領コメントが付く。指摘があれば、行コメントで付く。Codex の投稿の形は変わりうるので、判定が外れたら `wait-codex.sh` を直す。
 - 行のスレッドにならない Codex の通常コメントは、`address-review-comment` では扱えない。implement-issue は本文をユーザーに見せ、1件ずつ直すかどうかを聞く（ADR-0006 の「差分の外の指摘」の扱いを、これに置き換える）。

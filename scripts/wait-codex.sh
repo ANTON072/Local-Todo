@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # PR に投稿した「@codex review」への Codex のレビューが、つくまで待つ。
-# 「@codex review」の投稿より後に、Codex の bot が投稿したレビューか通常コメントを、一定間隔で確かめる。
-# 見つかったら結果を出して終わり、上限までに見つからなければ失敗して終わる（docs/adr/0012-first-review-by-codex.md）。
+# Codex は PR に「Codex Review Summary」のコメントを1つ作り、レビューが終わるとその中の状態を completed に書き換える。
+# 「@codex review」の投稿より後に、このコメントが今の PR のコミットについて completed になるのを、一定間隔で確かめる。
+# なったら結果を出して終わり、上限までにならなければ失敗して終わる（docs/adr/0012-first-review-by-codex.md）。
 # 使い方: scripts/wait-codex.sh <PR の URL か番号>
 # 環境変数:
 #   WAIT_INTERVAL  確かめる間隔（秒）。既定は 60
@@ -15,39 +16,47 @@ timeout="${WAIT_TIMEOUT:-900}"
 login_pattern="${CODEX_LOGIN:-codex}"
 
 number="$(gh pr view "$pr_ref" --json number --jq '.number')"
+head="$(gh pr view "$pr_ref" --json headRefOid --jq '.headRefOid')"
 
-# 最後に「@codex review」と投稿した時刻。これより後の Codex の投稿を、今回のレビューとして扱う。
+# 最後に人が「@codex review」と投稿した時刻。これより後の Codex の投稿を、今回のレビューとして扱う。
+# Codex も完了時のコメントに「@codex review」と書くので、bot の投稿は除く。
 since="$(
 	gh api --paginate "repos/{owner}/{repo}/issues/${number}/comments" \
-		--jq '.[] | select(.body | test("@codex review")) | .created_at' | sort | tail -n 1
+		--jq '.[] | select(.user.type != "Bot" and (.body | test("@codex review"))) | .created_at' | sort | tail -n 1
 )"
 if [[ -z "$since" ]]; then
 	echo "PR #${number} に「@codex review」のコメントがありません。先に投稿してください。" >&2
 	exit 1
 fi
 
-# Codex の bot の投稿だけを、since より後のものに絞る。
-bot_filter='select(.user.type == "Bot" and (.user.login | test($login; "i")))'
+# Codex の bot の通常コメントを、since より後に作られたか更新されたものに絞る。
+codex_comments() {
+	gh api --paginate "repos/{owner}/{repo}/issues/${number}/comments" |
+		jq -s --arg login "$login_pattern" --arg since "$since" \
+			'add | map(select(.user.type == "Bot" and (.user.login | test($login; "i")) and .updated_at > $since))'
+}
+
+# サマリーのコメントに埋め込まれた状態（codex-review-state）を取り出す。
+# 今のコミットについてレビューが終わっていれば、その状態の JSON を出す。
+completed_state() {
+	jq -c --arg head "$head" '
+		map(select(.body | contains("codex-pull-request-review-summary")))
+		| map(.body | capture("codex-review-state:v1 (?<state>\\{.*\\}) -->").state | fromjson)
+		| map(select(.code_review.status == "completed" and .code_review.commit_sha == $head))
+		| last // empty'
+}
 
 echo "PR #${number} への Codex のレビューを待っています（${since} 以降、上限 ${timeout} 秒）…" >&2
 
 waited=0
 while :; do
-	reviews="$(
-		gh api --paginate "repos/{owner}/{repo}/pulls/${number}/reviews" |
-			jq -s --arg login "$login_pattern" --arg since "$since" \
-				"add | map(${bot_filter} | select(.submitted_at > \$since))"
-	)"
-	comments="$(
-		gh api --paginate "repos/{owner}/{repo}/issues/${number}/comments" |
-			jq -s --arg login "$login_pattern" --arg since "$since" \
-				"add | map(${bot_filter} | select(.created_at > \$since))"
-	)"
-	if [[ "$(jq 'length' <<<"$reviews")" -gt 0 || "$(jq 'length' <<<"$comments")" -gt 0 ]]; then
+	comments="$(codex_comments)"
+	state="$(completed_state <<<"$comments")"
+	if [[ -n "$state" ]]; then
 		break
 	fi
 	if ((waited >= timeout)); then
-		echo "時間切れ: ${timeout} 秒待っても、Codex のレビューがつきませんでした。" >&2
+		echo "時間切れ: ${timeout} 秒待っても、Codex のレビューが終わりませんでした。" >&2
 		exit 1
 	fi
 	sleep "$interval"
@@ -58,17 +67,18 @@ done
 inline_count="$(
 	gh api --paginate "repos/{owner}/{repo}/pulls/${number}/comments" |
 		jq -s --arg login "$login_pattern" --arg since "$since" \
-			"add | map(${bot_filter} | select(.created_at > \$since)) | length"
+			'add | map(select(.user.type == "Bot" and (.user.login | test($login; "i")) and .created_at > $since)) | length'
 )"
 
-if [[ "$inline_count" -gt 0 ]]; then
+if [[ "$(jq -r '.code_review.has_any_findings' <<<"$state")" == "true" || "$inline_count" -gt 0 ]]; then
 	echo "結果: 指摘あり（行コメント ${inline_count} 件）"
 	echo "未解決のスレッドは make unresolved PR=${number} で出せる。"
 else
-	echo "結果: 指摘なし（行コメントなし）"
+	echo "結果: 指摘なし"
 fi
 
-# スレッドにならない投稿（レビューの本文と通常コメント）は、中身をそのまま出す。
-# ユーザーに見せ、直すかどうかを聞くため。
-jq -r '.[] | select(.body != null and .body != "") | "--- レビューの本文（\(.user.login)）\n\(.body)"' <<<"$reviews"
-jq -r '.[] | "--- 通常コメント（\(.user.login)）\n\(.body)"' <<<"$comments"
+# スレッドにならない投稿は、中身をそのまま出す。ユーザーに見せ、直すかどうかを聞くため。
+# サマリーと、指摘なしの受領コメント、環境の案内は、指摘ではないので除く。
+jq -r '.[]
+	| select(.body | contains("codex-pull-request-review-summary") or contains("codex-review-receipt") or contains("create an environment") | not)
+	| "--- 通常コメント（\(.user.login)）\n\(.body)"' <<<"$comments"
