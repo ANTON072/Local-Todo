@@ -63,6 +63,15 @@ struct TodoListView: View {
             }
             collapsedHeadings = opened
         }
+        // 作成日順で選んだ Todo が、期限日順に戻したとき畳んだ見出しに入ると、行が隠れたまま
+        // 詳細ペインで編集できてしまう。畳んだとき（toggleCollapsed）と同じく、選択を外す。
+        .onChange(of: sortOrder) {
+            guard showsHeadings, let selection else { return }
+            let hidden = store.inboxSections(now: .now).contains { section in
+                collapsedHeadings.contains(section.heading) && section.todos.contains { $0.id == selection }
+            }
+            if hidden { self.selection = nil }
+        }
         .onAppear {
             isInputFocused = kind.showsNewTodoField
         }
