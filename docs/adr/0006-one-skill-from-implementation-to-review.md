@@ -1,5 +1,5 @@
 ---
-status: accepted（「ドキュメントだけの PR は出さない」の部分だけ superseded by ADR-0007）
+status: accepted（「ドキュメントだけの PR は出さない」の部分だけ superseded by ADR-0007。`make review` を呼ぶ部分と「差分の外の指摘」の扱いは superseded by ADR-0012）
 ---
 # 全自動化はやめ、実装からレビュー対応までを1つのスキルで対話しながら進める
 

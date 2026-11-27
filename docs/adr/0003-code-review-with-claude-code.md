@@ -1,3 +1,6 @@
+---
+status: accepted（初回のレビューを `make review` で行う部分だけ superseded by ADR-0012。再レビューは今も `make re-review`）
+---
 # コードレビューは手元の Claude Code で行い、PR への投稿はスクリプトが行う
 
 PR のレビューには GitHub Copilot を使わず、Mac 上の Claude Code を `make review` から呼んで行う。Copilot のクレジットはほかのプロジェクトとも分け合っていて、PR ごとの自動レビューは1回で約100クレジットを使うため、月の途中で上限に届いた。レビューの再確認（`make re-review`）も Copilot CLI をやめ、同じ Claude Code のレビュアーを使う。
