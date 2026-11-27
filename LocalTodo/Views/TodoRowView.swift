@@ -8,6 +8,8 @@ struct TodoRowView: View {
     var dueEmphasis: DueEmphasis = .none
     let onToggle: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     /// 期限日の強調の種類。見出しの「期限切れ」「今日」に対応する。
     enum DueEmphasis {
         case none
@@ -36,21 +38,44 @@ struct TodoRowView: View {
                     .truncationMode(.tail)
                     .strikethrough(isChecked)
                     .foregroundStyle(isChecked ? .secondary : .primary)
-                if let dueText = todo.dueDateRowText(now: .now, calendar: .current) {
-                    // 年をまたいだら書き方が変わるが、一覧は日付が変わるたびに描き直さないので、
-                    // 年越しの瞬間だけ古い書き方が残る。次に描き直されたときに直る
-                    HStack(spacing: 3) {
-                        if dueEmphasis == .pastDue {
-                            Image(systemName: "exclamationmark.circle.fill")
+                let dueText = todo.dueDateRowText(now: .now, calendar: .current)
+                if dueText != nil || !todo.tags.isEmpty {
+                    // 期限日のあとに、タグのチップを続ける。1行に収まらない分は右端で切る
+                    // （折り返さないので、行の高さは1行か2行のどちらかになる）。
+                    HStack(spacing: 6) {
+                        if let dueText {
+                            // 年をまたいだら書き方が変わるが、一覧は日付が変わるたびに描き直さないので、
+                            // 年越しの瞬間だけ古い書き方が残る。次に描き直されたときに直る
+                            HStack(spacing: 3) {
+                                if dueEmphasis == .pastDue {
+                                    Image(systemName: "exclamationmark.circle.fill")
+                                }
+                                Text(dueText)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(dueStyle)
                         }
-                        Text(dueText)
+                        ForEach(todo.tags, id: \.self) { tag in
+                            tagChip(tag)
+                        }
                     }
-                    .font(.caption)
-                    .foregroundStyle(dueStyle)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .clipped()
                 }
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// タグのカプセル型のチップ。背景はアクセントの 12%（ダークは 20%）透過、文字はアクセント。
+    private func tagChip(_ tag: String) -> some View {
+        Text("#\(tag)")
+            .font(.caption)
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Color.accentColor.opacity(colorScheme == .dark ? 0.2 : 0.12), in: Capsule())
     }
 
     private var dueStyle: Color {
